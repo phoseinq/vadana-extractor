@@ -1,7 +1,7 @@
 # Changelog
 
 ## v1.5.1
-+ Reworded the bot's Persian messages — dropped the AI-flavored / over-casual phrasing (and stray signature emoji) for a cleaner, more natural tone
++ Cleaner wording in the bot's Persian messages
 
 ## v1.5.0
 + **Test suite** (`pytest`) — URL parser, file extractor, and whiteboard / timeline converters, all on synthetic fixtures (no real recording needed)
