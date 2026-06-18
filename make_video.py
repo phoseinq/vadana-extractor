@@ -22,7 +22,8 @@ def load_package(args):
     if not rec.token:
         sys.exit("[!] link has no ?session= — paste the live recording URL.")
     print(f"[*] downloading package {rec.rec_id} ...")
-    return ConnectClient(rec.host, rec.token).open_package(rec.rec_id), rec.rec_id
+    proxy = os.environ.get("IRAN_PROXY") or None
+    return ConnectClient(rec.host, rec.token, proxy=proxy).open_package(rec.rec_id), rec.rec_id
 
 def main():
     ap = argparse.ArgumentParser()
@@ -44,14 +45,13 @@ def main():
 
     print("[*] parsing whiteboard ...")
     wb = wb_mod.load_from_package(zf)
-    if not wb.pages:
-        print("[!] this recording has no whiteboard content "
-              "(maybe shared documents — use download_slides.py instead).")
-        return
     print(f"[*] {len(wb.pages)} page(s), {len(wb.events)} events, "
           f"~{wb.duration_ms/60000:.1f} min")
 
     if args.pages_only:
+        if not wb.pages:
+            print("[!] no whiteboard content (maybe shared documents — use download_slides.py).")
+            return
         out = args.out or os.path.join(out_dir, f"{rec_id}_whiteboard.pdf")
         os.makedirs(out_dir, exist_ok=True)
         imgs = wb_mod.render_final_pages(wb, args.scale)
@@ -62,21 +62,15 @@ def main():
     if not audio_mod.ffmpeg_available():
         sys.exit("[!] ffmpeg not found on PATH (needed for video).")
 
-    print("[*] extracting audio ...")
-    audio_path = audio_mod.extract_audio(zf, work, os.path.join(work, "audio.m4a"))
-    print("    audio:", audio_path or "none found")
-
-    print(f"[*] rendering frames (scale {args.scale}, <= {args.fps} fps) ...")
-    frames = video_mod.build_frames(wb, os.path.join(work, "frames"),
-                                    scale=args.scale, max_fps=args.fps)
-    print(f"    {len(frames)} frames")
-
     out = args.out or os.path.join(out_dir, f"{rec_id}.mp4")
     os.makedirs(out_dir, exist_ok=True)
-    t0 = frames[0][0] if frames else 0.0
-    print(f"[*] muxing video + audio (drawing starts at {t0/60:.1f} min) ...")
-    video_mod.mux(frames, audio_path, out, work,
-                  audio_skip_seconds=t0, audio_offset_ms=args.audio_offset)
+    print("[*] building synced video (whiteboard + screen-share + audio) ...")
+    res = video_mod.make_full_video(zf, work, out, args.scale, args.fps,
+                                    progress=lambda s, p: print(f"\r    {s}  {p:3.0f}%   ", end="", flush=True))
+    print()
+    if not res:
+        print("[!] nothing to build (no whiteboard and no screen-share).")
+        return
     print(f"[+] DONE -> {out}")
 
 if __name__ == "__main__":

@@ -44,7 +44,7 @@ def main():
         if not rec.token:
             print("[!] link has no ?session= — skipped.")
             continue
-        client = ConnectClient(rec.host, rec.token)
+        client = ConnectClient(rec.host, rec.token, proxy=os.environ.get("IRAN_PROXY") or None)
         try:
             saved = download_slides(client, rec.rec_id, os.path.join("slides", rec.rec_id))
         except Exception as e:

@@ -9,7 +9,9 @@ dl() {
   local type="$1" url="$2"
   [ -n "$url" ] || read -rp "  recording URL: " url
   [ -n "$url" ] || { echo "no URL"; return 1; }
-  ( cd "$DIR" && case "$type" in
+  ( cd "$DIR" || exit 1
+    set -a; [ -f "$ENVF" ] && . "$ENVF"; set +a   # picks up IRAN_PROXY when hosting abroad
+    case "$type" in
       files)      "$PY" download_slides.py "$url" ;;
       whiteboard) "$PY" make_video.py "$url" --pages-only ;;
       video)      "$PY" make_video.py "$url" ;;
@@ -39,7 +41,7 @@ run() {
       read -rp "Also delete cache/, logs/, bot_work/ (file_id store, quotas, scratch)? [y/N] " b
       [ "$b" = y ] && rm -rf "$DIR/cache" "$DIR/logs" "$DIR/bot_work" && echo "✓ data removed"
       echo "✓ uninstalled" ;;
-    *) return 1 ;;
+    *) echo "unknown command: $1" >&2; return 2 ;;
   esac
 }
 
@@ -61,4 +63,4 @@ menu() {
   done
 }
 
-[ -z "$1" ] && menu || run "$@" || { echo "unknown command: $1"; exit 1; }
+[ -z "$1" ] && menu || run "$@"
