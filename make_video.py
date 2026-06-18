@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""
-Part 2 CLI — reconstruct a whiteboard lecture into a synced MP4 (or a PDF of
-the board pages).
-
-Usage:
-  python make_video.py "<recording-url-with-?session=...>"
-  python make_video.py "<url>" --pages-only          # just a PDF of the pages
-  python make_video.py --package local.zip           # use an already-downloaded package
-
-Options:
-  --out FILE        output path (default: <rec_id>.mp4 / .pdf)
-  --pages-only      render final whiteboard pages to PDF, skip the video
-  --scale N         render scale, native 800x600 * N (default 2)
-  --fps N           max frames/second for the animation (default 4)
-  --audio-offset MS shift audio by milliseconds if it drifts (default 0)
-Output: ./out/<rec_id>.mp4  (+ frames/ and audio in ./out/_work/)
-"""
 import argparse
 import os
 import sys
@@ -31,7 +14,6 @@ try:
 except Exception:
     pass
 
-
 def load_package(args):
     if args.package:
         rec_id = os.path.splitext(os.path.basename(args.package))[0]
@@ -41,7 +23,6 @@ def load_package(args):
         sys.exit("[!] link has no ?session= — paste the live recording URL.")
     print(f"[*] downloading package {rec.rec_id} ...")
     return ConnectClient(rec.host, rec.token).open_package(rec.rec_id), rec.rec_id
-
 
 def main():
     ap = argparse.ArgumentParser()
@@ -92,13 +73,11 @@ def main():
 
     out = args.out or os.path.join(out_dir, f"{rec_id}.mp4")
     os.makedirs(out_dir, exist_ok=True)
-    # video starts at the first stroke (t0); trim audio by t0 to keep it in sync
     t0 = frames[0][0] if frames else 0.0
     print(f"[*] muxing video + audio (drawing starts at {t0/60:.1f} min) ...")
     video_mod.mux(frames, audio_path, out, work,
                   audio_skip_seconds=t0, audio_offset_ms=args.audio_offset)
     print(f"[+] DONE -> {out}")
-
 
 if __name__ == "__main__":
     main()

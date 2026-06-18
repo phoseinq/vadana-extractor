@@ -20,7 +20,7 @@
 
 ### 📖 Description
 
-**Vadana Extractor** recovers study material from Adobe Connect ("Vadana", `vadavc30.ec.iau.ir`) class recordings you are **authorized to watch** — straight from each recording's own offline package, using your own session token. No server intrusion, no authentication bypass.
+**Vadana Extractor** recovers study material from Adobe Connect ("Vadana", `vadavc30.ec.iau.ir`) class recordings you can already watch — straight from each recording's own offline package, using your own session.
 
 It ships both as a **Telegram bot** (Persian, multi-user) and as a pair of standalone **CLI tools**.
 
@@ -29,7 +29,7 @@ It ships both as a **Telegram bot** (Persian, multi-user) and as a pair of stand
 - 📄 **Original shared files** — downloads the untouched PDF / Word / PPT / any file a professor put in the Share pod (even when the download button was disabled)
 - 📝 **Whiteboard → PDF** — replays the board's timed vector events and renders every page to a clean PDF
 - 🎬 **Synced archive video** — rebuilds the lecture on one master timeline: whiteboard **+** screen-share **+** the lecturer's audio, in sync
-- 🤖 **Telegram bot** — students just send a recording link and pick what they want; colored inline buttons, a live progress bar, formal Persian UI
+- 🤖 **Telegram bot** — students just send a recording link and pick what they want; colored inline buttons, a live progress bar, formal Persian UI, a "report a problem" button on every result
 - 🇮🇷 **Iran-proxy aware** — runs on a server abroad and reaches the Iran-only Vadana host through your proxy
 - 🗃️ **Telegram-backed cache** — each result is uploaded once to a private channel and re-sent instantly by `file_id` (nothing kept on disk)
 - 🛡️ **Server protection** — per-user single job, global concurrency cap, cooldown, daily video quota, systemd resource limits
@@ -68,25 +68,35 @@ The session token is the `session=` value in the live recording URL; it expires 
 ```bash
 git clone https://github.com/phoseinq/vadana-extractor.git /opt/vadana-extractor
 cd /opt/vadana-extractor
-pip install -r requirements.txt -r bot/requirements.txt
-cp bot/.env.example bot/.env        # then fill it in
+bash install.sh          # ffmpeg, a venv, deps, the systemd service & the `vadana` command
+vadana env               # fill the config (see below), then it restarts
+systemctl enable --now vadana-bot
 ```
 
-Minimal `.env`:
+`.env` essentials:
 
 ```ini
 BOT_TOKEN=123456:ABC...
 IRAN_PROXY=socks5://user:pass@IRAN_IP:1080
-ADMINS=11111111
-ALLOW_VIDEO=0
+ADMINS=11111111                    # Telegram user ids allowed to build videos
+STORAGE_CHANNEL=-1001234567890     # private channel id used as a file cache (bot must be admin)
+ALLOW_VIDEO=0                      # 1 = let everyone build videos (heavy)
 ```
 
-Run it as a service:
+---
+
+### 🧰 Management CLI
+
+`install.sh` also installs a `vadana` command. Run it with no arguments for an interactive menu, or use subcommands directly:
 
 ```bash
-cp bot/systemd/vadana-bot.service /etc/systemd/system/
-systemctl daemon-reload && systemctl enable --now vadana-bot
-journalctl -u vadana-bot -f
+vadana              # interactive menu
+vadana status       # service status
+vadana logs         # live logs (Ctrl+C to exit)
+vadana start | stop | restart
+vadana update       # git pull + reinstall deps + restart
+vadana env          # edit .env, then restart
+vadana uninstall    # remove the service (asks before deleting data)
 ```
 
 ---
@@ -101,9 +111,9 @@ Every recording exposes an offline package at `/<id>/output/<id>.zip?download=zi
 
 ---
 
-### ⚖️ Scope & ethics
+### ⚖️ Scope
 
-For students extracting their **own** course material that they can already watch. It only uses your authenticated session and the recording's own files — it does **not** break into the server or bypass any access control.
+For students recovering their **own** course material from recordings they can already watch — it uses your authenticated session and the recording's own files, nothing more.
 
 ---
 
@@ -113,7 +123,7 @@ For students extracting their **own** course material that they can already watc
 
 ### 📖 معرفی
 
-**Vadana Extractor** جزوه و محتوای درسی رو از ضبط‌های کلاسِ ادوبی کانکت («وادانا»، `vadavc30.ec.iau.ir`) که **اجازهٔ تماشاشون رو داری** بیرون می‌کشه — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط و با سشنِ خودت. نه نفوذ به سرور، نه دورزدنِ احراز هویت.
+**Vadana Extractor** جزوه و محتوای درسی رو از ضبط‌های کلاسِ ادوبی کانکت («وادانا»، `vadavc30.ec.iau.ir`) که خودت اجازهٔ دیدنشون رو داری بیرون می‌کشه — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط و با سشنِ خودت.
 
 هم به‌صورتِ **رباتِ تلگرام** (فارسی، چندکاربره) عرضه می‌شه و هم دو تا **ابزارِ خط‌فرمان**.
 
@@ -122,7 +132,7 @@ For students extracting their **own** course material that they can already watc
 - 📄 **فایل‌های اشتراکیِ اصل** — دانلودِ PDF/Word/PPT یا هر فایلی که استاد توی Share pod گذاشته (حتی وقتی دکمهٔ دانلود غیرفعال بوده)
 - 📝 **وایت‌برد ← PDF** — بازپخشِ رویدادهای بُرداریِ تخته و رندرِ همهٔ صفحه‌ها به یه PDFِ تمیز
 - 🎬 **ویدیوی همگامِ آرشیو** — بازسازیِ کلاس روی یه تایم‌لاینِ واحد: وایت‌برد **+** اشتراکِ صفحه **+** صدای استاد، همگام
-- 🤖 **رباتِ تلگرام** — دانشجو فقط لینکِ ضبط رو می‌فرسته و انتخاب می‌کنه؛ دکمه‌های رنگی، نوارِ پیشرفتِ زنده، رابطِ رسمیِ فارسی
+- 🤖 **رباتِ تلگرام** — دانشجو فقط لینکِ ضبط رو می‌فرسته و انتخاب می‌کنه؛ دکمه‌های رنگی، نوارِ پیشرفتِ زنده، رابطِ رسمیِ فارسی، و دکمهٔ «گزارشِ مشکل» زیرِ هر خروجی
 - 🇮🇷 **سازگار با پروکسیِ ایران** — رو سرورِ خارج اجرا می‌شه و از طریقِ پروکسیِ تو به هاستِ فقط-ایرانِ وادانا می‌رسه
 - 🗃️ **کشِ مبتنی‌بر تلگرام** — هر خروجی یک‌بار توی یه چنلِ خصوصی آپلود و دفعهٔ بعد با `file_id` فوری ارسال می‌شه
 - 🛡️ **محافظت از سرور** — یک کارِ همزمان برای هر کاربر، سقفِ کلیِ همزمانی، کول‌داون، سهمیهٔ روزانهٔ ویدیو، محدودیتِ منابعِ systemd
@@ -166,20 +176,42 @@ python make_video.py "<url>" --pages-only
 ```bash
 git clone https://github.com/phoseinq/vadana-extractor.git /opt/vadana-extractor
 cd /opt/vadana-extractor
-pip install -r requirements.txt -r bot/requirements.txt
-cp bot/.env.example bot/.env        # بعد پُرش کن
-
-cp bot/systemd/vadana-bot.service /etc/systemd/system/
-systemctl daemon-reload && systemctl enable --now vadana-bot
+bash install.sh          # ffmpeg، venv، وابستگی‌ها، سرویسِ systemd و دستورِ vadana
+vadana env               # کانفیگ رو پُر کن، بعد ری‌استارت می‌شه
+systemctl enable --now vadana-bot
 ```
 
-نمونهٔ پروکسیِ ایران با `gost` روی یه VPS ایران: `gost -L "socks5://user:pass@:1080"` و بعد توی `.env`: `IRAN_PROXY=socks5://user:pass@IRAN_IP:1080`.
+مقادیرِ ضروریِ `.env`:
+
+```ini
+BOT_TOKEN=123456:ABC...
+IRAN_PROXY=socks5://user:pass@IRAN_IP:1080
+ADMINS=11111111                    # آی‌دیِ کاربرهایی که اجازهٔ ساختِ ویدیو دارن
+STORAGE_CHANNEL=-1001234567890     # آی‌دیِ چنلِ خصوصی برای کشِ فایل‌ها (ربات باید ادمینش باشه)
+ALLOW_VIDEO=0                      # ۱ = ساختِ ویدیو برای همه (سنگین)
+```
 
 ---
 
-### ⚖️ محدوده و اخلاق
+### 🧰 ابزارِ مدیریت
 
-برای دانشجوهایی که محتوای **درسِ خودشون** رو — که همین الان هم اجازهٔ دیدنش رو دارن — استخراج می‌کنن. فقط از سشنِ احرازشدهٔ خودت و فایل‌های خودِ ضبط استفاده می‌کنه؛ به سرور نفوذ نمی‌کنه و هیچ کنترلِ دسترسی‌ای رو دور نمی‌زنه.
+`install.sh` یه دستورِ `vadana` هم نصب می‌کنه. بدونِ آرگومان منوی تعاملی می‌ده، یا مستقیم با ساب‌کامند:
+
+```bash
+vadana              # منوی تعاملی
+vadana status       # وضعیتِ سرویس
+vadana logs         # لاگِ زنده (Ctrl+C برای خروج)
+vadana start | stop | restart
+vadana update       # git pull + نصبِ مجددِ وابستگی‌ها + ری‌استارت
+vadana env          # ویرایشِ .env و ری‌استارت
+vadana uninstall    # حذفِ سرویس (قبلِ پاکِ داده می‌پرسه)
+```
+
+---
+
+### ⚖️ محدوده
+
+برای دانشجوهایی که محتوای **درسِ خودشون** رو از ضبط‌هایی که همین الان هم می‌تونن ببینن، بازیابی می‌کنن — با سشنِ احرازشدهٔ خودت و فایل‌های خودِ ضبط، نه چیزِ دیگه.
 
 </div>
 

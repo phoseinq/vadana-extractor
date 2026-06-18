@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-Telegram bot (Persian, formal, interactive, multi-user) for IAU Vadana recordings.
-
-Buttons (menu message is edited in place, never spammed):
-  📄 files · 📝 whiteboard · 🎬 video · 👤 profile · 💬 support
-
-Sends large files via a local Bot API server (up to 2 GB). Live status: one
-message per job, edited with a progress bar + spinner + elapsed + ETA + Cancel.
-Multi-user background tasks, queueing semaphores, per-recording cache, daily cap.
-
-Run from the repo root:  python -m bot.bot
-"""
 import asyncio
 import glob
 import json
@@ -44,10 +32,7 @@ os.makedirs(config.LOG_DIR, exist_ok=True)
 logging.basicConfig(filename=os.path.join(config.LOG_DIR, "errors.log"),
                     level=logging.ERROR, format="%(asctime)s %(message)s")
 
-# ---- Telegram-backed storage: upload a result once to a channel, then reuse its
-#      file_id (instant re-sends, nothing kept on disk). Persisted to store.json.
 STORE_PATH = os.path.join(config.CACHE_DIR, "store.json")
-
 
 def _store_load():
     try:
@@ -59,9 +44,7 @@ def _store_load():
         data.setdefault(k, {})
     return data
 
-
 STORE = _store_load()
-
 
 def _store_save():
     os.makedirs(config.CACHE_DIR, exist_ok=True)
@@ -70,15 +53,12 @@ def _store_save():
         json.dump(STORE, f, ensure_ascii=False)
     os.replace(tmp, STORE_PATH)
 
-
 def _store_get(kind, rec_id):
     return STORE.get(kind, {}).get(rec_id)
-
 
 def _store_put(kind, rec_id, val):
     STORE.setdefault(kind, {})[rec_id] = val
     _store_save()
-
 
 LINK_RE = re.compile(r"https?://\S+session=\S+")
 
@@ -112,8 +92,12 @@ CANCEL_KB = InlineKeyboardMarkup(inline_keyboard=[
 BACK_KB = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="⬅️ بازگشت به منو", callback_data="menu:main")]])
 
+def _report_kb(rec_id):
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛑 گزارشِ مشکل", callback_data=f"report:{rec_id}", style="danger")]])
+
 FT_LABEL = {"doc": "سند", "audio": "صدا", "video": "ویدیو", "image": "تصویر", "all": "فایل"}
-VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".m4v"}   # sent as playable video, not document
+VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".m4v"}
 
 FRESH = ("در صورتِ تکرارِ مشکل، احتمالاً لینک منقضی شده است. لطفاً دوباره وارد آرشیو شوید، "
          "روی همان کلاس بزنید و لینکِ تازهٔ بالای مرورگر را کپی و ارسال کنید.")
@@ -133,10 +117,10 @@ L_PREP = "📄 در حال آماده‌سازیِ فایل‌ها…"
 
 SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-# ---- state -------------------------------------------------------------------
 USER_MODE: dict[int, str] = {}
 USER_FILETYPE: dict[int, str] = {}
 ACTIVE_USERS: set[int] = set()
+PENDING_REPORT: dict[int, str] = {}
 ACTIVE_TASKS: dict[int, asyncio.Task] = {}
 ACTIVE_STOP: dict[int, asyncio.Event] = {}
 LAST_USED: dict[int, float] = {}
@@ -148,43 +132,30 @@ _session = AiohttpSession(api=TelegramAPIServer.from_base(config.LOCAL_API_URL))
 bot = Bot(config.BOT_TOKEN, session=_session)
 dp = Dispatcher()
 
-
 def _fmt(s) -> str:
     s = max(0, int(s))
     return f"{s // 60}:{s % 60:02d}"
 
-
 def _bar(pct: float) -> str:
     pct = max(0, min(100, int(round(pct))))
     return "█" * round(pct / 10) + "░" * (10 - round(pct / 10)) + f"  {pct}%"
-
 
 def _stat(uid, key):
     d = STORE["stats"].setdefault(str(uid), {"files": 0, "wb": 0, "videos": 0})
     d[key] = d.get(key, 0) + 1
     _store_save()
 
-
-VIDEO_ETA_SEC = 570        # video builds run ~9-10 min on the 2-core server (download
-                           # via the Iran proxy + encode); floor the ETA so it doesn't
-                           # under-promise early when the bar % runs ahead of wall time.
-
+VIDEO_ETA_SEC = 570
 
 class _Prog:
     def __init__(self):
         self.label, self.pct = "در حال آماده‌سازی…", 0.0
-        self.min_total = None       # if set, "approx remaining" never drops below this floor
+        self.min_total = None
 
     def set(self, label, pct):
         self.label, self.pct = label, pct
 
-
 async def _poll(status: Message, prog: _Prog, stop: asyncio.Event):
-    # "Approximate remaining" without the jitter that plagued earlier tries:
-    # extrapolate from the WHOLE elapsed time (eta = elapsed * (100-pct)/pct),
-    # which is naturally smooth + decreasing, and smooth it ASYMMETRICALLY — drop
-    # fast (responsive) but rise very slowly, so a brief stall never makes the
-    # number jump up. Shown only once we're meaningfully underway.
     start, i, last, eta = time.time(), 0, "", None
     while not stop.is_set():
         i += 1
@@ -199,12 +170,12 @@ async def _poll(status: Message, prog: _Prog, stop: asyncio.Event):
                 if eta is None:
                     eta = raw
                 elif raw < eta:
-                    eta = 0.5 * eta + 0.5 * raw        # progressing -> follow down quickly
+                    eta = 0.5 * eta + 0.5 * raw
                 else:
-                    eta = 0.92 * eta + 0.08 * raw       # stalled -> barely move up
+                    eta = 0.92 * eta + 0.08 * raw
                 rem = eta
-            if prog.min_total:                          # long job: don't under-promise early;
-                rem = max(rem or 0, prog.min_total - el)  # linear still extends it if it runs over
+            if prog.min_total:
+                rem = max(rem or 0, prog.min_total - el)
             tail = (f"تقریباً {_fmt(rem)} باقی‌مانده" if rem and rem >= 1
                     else "در حال آماده‌سازی…")
         txt = (f"{prog.label}\n{_bar(pct)}\n"
@@ -220,18 +191,15 @@ async def _poll(status: Message, prog: _Prog, stop: asyncio.Event):
         except asyncio.TimeoutError:
             pass
 
-
 def _video_used_today(uid):
     d = STORE["video_day"].get(str(uid))
     return d[1] if d and d[0] == date.today().isoformat() else 0
-
 
 def _video_inc(uid):
     today = date.today().isoformat()
     d = STORE["video_day"].get(str(uid))
     STORE["video_day"][str(uid)] = [today, 1] if not d or d[0] != today else [today, d[1] + 1]
     _store_save()
-
 
 async def _send_with_bar(m, status, paths, kind):
     n, sent = len(paths), 0
@@ -256,7 +224,6 @@ async def _send_with_bar(m, status, paths, kind):
             await m.answer(f"⚠️ ارسالِ «{os.path.basename(p)}» ({mb:.0f}MB) ممکن نشد:\n{e}")
     return sent
 
-
 async def _archive(path):
     """Upload a local file to the storage channel once; return (file_id, is_video)."""
     name = os.path.basename(path)
@@ -267,39 +234,34 @@ async def _archive(path):
     msg = await bot.send_document(config.STORAGE_CHANNEL, FSInputFile(path), caption=name)
     return msg.document.file_id, False
 
-
-async def _send_fid(m, fid, is_video, caption) -> bool:
+async def _send_fid(m, fid, is_video, caption, markup=None) -> bool:
     """Send a previously-stored Telegram file by its file_id (instant, no disk)."""
     try:
         if is_video:
-            await m.answer_video(fid, caption=caption, supports_streaming=True)
+            await m.answer_video(fid, caption=caption, supports_streaming=True, reply_markup=markup)
         else:
-            await m.answer_document(fid, caption=caption)
+            await m.answer_document(fid, caption=caption, reply_markup=markup)
         return True
     except Exception:
         logging.error("send_fid failed [%s]:\n%s", fid, traceback.format_exc())
         return False
-
 
 async def _show(cb: CallbackQuery, text: str, markup=MENU):
     """Edit the menu message in place (keeping its buttons) instead of sending a new one."""
     try:
         await cb.message.edit_text(text, parse_mode="Markdown", reply_markup=markup)
     except Exception as e:
-        if "not modified" in str(e).lower():     # same option re-tapped — nothing to do
+        if "not modified" in str(e).lower():
             return
         try:
             await cb.message.answer(text, parse_mode="Markdown", reply_markup=markup)
         except Exception:
             pass
 
-
-# ---- menu handlers -----------------------------------------------------------
 @dp.message(CommandStart())
 async def start(m: Message):
     USER_MODE.pop(m.from_user.id, None)
     await m.answer(WELCOME, parse_mode="Markdown", reply_markup=MENU)
-
 
 @dp.callback_query(F.data == "menu:profile")
 async def profile(cb: CallbackQuery):
@@ -316,12 +278,10 @@ async def profile(cb: CallbackQuery):
                 BACK_KB)
     await cb.answer()
 
-
 @dp.callback_query(F.data == "menu:support")
 async def support(cb: CallbackQuery):
     await _show(cb, config.SUPPORT_TEXT or "💬 *پشتیبانی*\n\nبه‌زودی تکمیل می‌شود…", BACK_KB)
     await cb.answer()
-
 
 @dp.callback_query(F.data == "job_cancel")
 async def job_cancel(cb: CallbackQuery):
@@ -340,16 +300,13 @@ async def job_cancel(cb: CallbackQuery):
     else:
         await cb.answer("عملیاتی برای لغو وجود ندارد.")
 
-
 @dp.callback_query(F.data == "menu:main")
 async def back_main(cb: CallbackQuery):
     await _show(cb, "منوی اصلی — لطفاً یک گزینه را انتخاب کنید:", MENU)
     await cb.answer()
 
-
 @dp.callback_query(F.data.startswith("ft:"))
 async def choose_filetype(cb: CallbackQuery):
-    # edit the message text to confirm the choice, but keep all the sub-menu buttons
     uid, ft = cb.from_user.id, cb.data.split(":", 1)[1]
     USER_MODE[uid] = "files"
     USER_FILETYPE[uid] = ft
@@ -357,11 +314,10 @@ async def choose_filetype(cb: CallbackQuery):
     await _show(cb, f"📂 *دانلودِ {label}* انتخاب شد. لطفاً لینکِ ضبط را ارسال کنید.", BACK_KB)
     await cb.answer()
 
-
 @dp.callback_query(F.data.startswith("mode:"))
 async def choose_mode(cb: CallbackQuery):
     uid, mode = cb.from_user.id, cb.data.split(":", 1)[1]
-    if mode == "files":                                  # reveal the file-type sub-menu
+    if mode == "files":
         await _show(cb, "📂 *دانلودِ فایل‌ها*\nلطفاً نوعِ فایلِ موردنظر را انتخاب کنید:", FILES_MENU)
         await cb.answer()
         return
@@ -369,7 +325,6 @@ async def choose_mode(cb: CallbackQuery):
         await _show(cb, "🎬 ساختِ ویدیو در حال حاضر غیرفعال است؛ لطفاً از «📂 دانلود فایل‌ها» استفاده کنید.", BACK_KB)
         await cb.answer()
         return
-    # enter the section: replace the menu with a confirmation + only a back button
     USER_MODE[uid] = mode
     if mode == "wb":
         msg = ("📝 حالتِ *دانلود وایت‌برد* انتخاب شد. لطفاً لینکِ ضبطِ وایت‌بردی را ارسال کنید؛ "
@@ -381,6 +336,34 @@ async def choose_mode(cb: CallbackQuery):
     await _show(cb, msg, BACK_KB)
     await cb.answer()
 
+@dp.callback_query(F.data.startswith("report:"))
+async def report_start(cb: CallbackQuery):
+    uid = cb.from_user.id
+    PENDING_REPORT[uid] = cb.data.split(":", 1)[1]
+    await cb.message.answer(
+        "🛑 *گزارشِ مشکل*\n\nاگر مایل بودید، خلاصهٔ مشکل را در یک پیام بنویسید (اختیاری).\n"
+        "برای ثبتِ بدونِ توضیح، /skip را بفرستید.", parse_mode="Markdown")
+    await cb.answer("منتظرِ توضیحِ شما هستم…")
+
+@dp.message(lambda m: m.from_user and m.from_user.id in PENDING_REPORT)
+async def handle_report_text(m: Message):
+    uid = m.from_user.id
+    rec_id = PENDING_REPORT.pop(uid, "?")
+    summary = (m.text or "").strip()
+    if not summary or summary == "/skip":
+        summary = "— (بدونِ توضیح)"
+    u = m.from_user
+    who = f"@{u.username}" if u.username else (u.full_name or "—")
+    text = (f"#Boy 🛑 گزارشِ مشکل\n"
+            f"👤 {who}  (`{uid}`)\n"
+            f"🎬 ضبط: `{rec_id}`\n"
+            f"────────\n{summary}")
+    try:
+        if config.STORAGE_CHANNEL:
+            await bot.send_message(config.STORAGE_CHANNEL, text, parse_mode="Markdown")
+    except Exception:
+        logging.error("report forward failed:\n%s", traceback.format_exc())
+    await m.reply("✅ گزارشِ شما ثبت و برای بررسی ارسال شد. ممنون از همراهی! 🌱")
 
 @dp.message(F.text.regexp(LINK_RE.pattern))
 async def handle_link(m: Message):
@@ -389,8 +372,6 @@ async def handle_link(m: Message):
         await m.reply("⚠️ یک درخواستِ شما در حال انجام است؛ لطفاً تا پایانِ آن صبر کنید "
                       "(یا با دکمهٔ «لغو» متوقفش کنید).")
         return
-    # input is closed until a mode is chosen from the menu; one accepted link
-    # consumes it again (see _run_job). only a failure re-opens it for a resend.
     if uid not in USER_MODE:
         await m.answer("ℹ️ ابتدا نوعِ خروجیِ موردنظر را از منو انتخاب کنید، سپس لینک را ارسال کنید:",
                        reply_markup=MENU)
@@ -413,7 +394,6 @@ async def handle_link(m: Message):
     LAST_USED[uid] = time.time()
     ACTIVE_USERS.add(uid)
     ACTIVE_TASKS[uid] = asyncio.create_task(_run_job(m, rec, mode))
-
 
 async def _run_job(m, rec, mode):
     uid = m.from_user.id
@@ -440,11 +420,8 @@ async def _run_job(m, rec, mode):
         ACTIVE_TASKS.pop(uid, None)
         ACTIVE_STOP.pop(uid, None)
         if ok:
-            USER_MODE.pop(uid, None)        # request done -> close input until a mode is re-chosen
-        # on failure/cancel USER_MODE stays set, so the user can just resend the link
+            USER_MODE.pop(uid, None)
 
-
-# ---- jobs --------------------------------------------------------------------
 async def do_files(m, rec, ftype):
     uid = m.from_user.id
     status = await m.reply("🔎 در حال بررسی…")
@@ -496,8 +473,8 @@ async def do_files(m, rec, ftype):
     sent = sum([await _send_fid(m, it["fid"], it.get("v", False), it["name"]) for it in items])
     for _ in range(sent):
         _stat(uid, "files")
-    await status.edit_text(f"✅ {sent} فایل ارسال شد. 🌱\nبرای ضبطِ بعدی /start را بزنید.")
-
+    await status.edit_text(f"✅ {sent} فایل ارسال شد. 🌱\nبرای ضبطِ بعدی /start را بزنید.",
+                           reply_markup=_report_kb(rec.rec_id))
 
 async def do_whiteboard(m, rec):
     uid = m.from_user.id
@@ -506,7 +483,7 @@ async def do_whiteboard(m, rec):
     fid = _store_get("wb", rec.rec_id)
     if fid:
         await status.edit_text("📤 در حال ارسال… (از آرشیو)")
-        if await _send_fid(m, fid, False, f"وایت‌برد — {rec.rec_id}"):
+        if await _send_fid(m, fid, False, f"وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id)):
             _stat(uid, "wb")
             await status.edit_text("✅ فایلِ PDFِ وایت‌برد ارسال شد. 🌱  (/start)")
             return
@@ -539,7 +516,7 @@ async def do_whiteboard(m, rec):
         await status.edit_text("📤 در حال ذخیره و ارسال…")
         fid, _ = await _archive(tmp)
         _store_put("wb", rec.rec_id, fid)
-        await _send_fid(m, fid, False, f"وایت‌برد — {rec.rec_id}")
+        await _send_fid(m, fid, False, f"وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id))
         _stat(uid, "wb")
         await status.edit_text("✅ فایلِ PDFِ وایت‌برد ارسال شد. 🌱  (/start)")
     finally:
@@ -548,7 +525,6 @@ async def do_whiteboard(m, rec):
             await poller
         shutil.rmtree(work, ignore_errors=True)
 
-
 async def do_video(m, rec):
     uid = m.from_user.id
     status = await m.reply("🔎 در حال بررسی…")
@@ -556,7 +532,7 @@ async def do_video(m, rec):
     fid = _store_get("video", rec.rec_id)
     if fid:
         await status.edit_text("📤 در حال ارسال… (از آرشیو)")
-        if await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}"):
+        if await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id)):
             await status.edit_text("✅ ویدیو ارسال شد. 🌱  (/start)")
             return
         STORE["video"].pop(rec.rec_id, None)
@@ -572,7 +548,7 @@ async def do_video(m, rec):
                                "و به‌نوبت انجام می‌شود.")
 
     prog, stop = _Prog(), asyncio.Event()
-    prog.min_total = VIDEO_ETA_SEC        # video takes ~9-10 min on the server; floor the ETA
+    prog.min_total = VIDEO_ETA_SEC
     ACTIVE_STOP[uid] = stop
     poller = asyncio.create_task(_poll(status, prog, stop))
     work = os.path.join(config.WORK_DIR, f"{rec.rec_id}_video")
@@ -601,7 +577,7 @@ async def do_video(m, rec):
         fid, _ = await _archive(tmp_out)
         _store_put("video", rec.rec_id, fid)
         _video_inc(uid)
-        await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}")
+        await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id))
         _stat(uid, "videos")
         left = config.MAX_VIDEO_PER_DAY - _video_used_today(uid)
         await status.edit_text(f"✅ ویدیوی آرشیو ارسال شد. 🌱  "
@@ -612,17 +588,14 @@ async def do_video(m, rec):
             await poller
         shutil.rmtree(work, ignore_errors=True)
 
-
 @dp.message()
 async def fallback(m: Message):
     await m.answer("برای شروع، /start را بزنید، یک گزینه انتخاب کنید و سپس لینکِ ضبط را ارسال کنید.",
                    reply_markup=MENU)
 
-
 async def main():
     print("bot running...")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())

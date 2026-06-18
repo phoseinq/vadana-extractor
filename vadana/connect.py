@@ -1,10 +1,3 @@
-"""
-Shared access layer for IAU "Vadana" Adobe Connect recordings.
-
-Handles: parsing a recording URL, an authenticated HTTP session (the server
-uses a local/self-signed CA, so TLS verification is disabled on purpose), and
-downloading the recording's offline package (a ZIP of FLV streams + XML).
-"""
 from __future__ import annotations
 
 import io
@@ -17,7 +10,6 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-
 @dataclass
 class Recording:
     """A recording identified by host, id and the session token from its URL."""
@@ -29,7 +21,6 @@ class Recording:
     def base_url(self) -> str:
         return f"{self.host}/{self.rec_id}/"
 
-
 def parse_recording_url(url: str) -> Recording:
     """Accepts a full recording URL (preferably still carrying ?session=...)."""
     u = urlparse(url)
@@ -37,7 +28,6 @@ def parse_recording_url(url: str) -> Recording:
     rec_id = u.path.strip("/").split("/")[-1]
     token = parse_qs(u.query).get("session", [""])[0]
     return Recording(host=host, rec_id=rec_id, token=token)
-
 
 class ConnectClient:
     """Thin authenticated HTTP client for one Adobe Connect host."""
@@ -49,7 +39,7 @@ class ConnectClient:
         self.host = host.rstrip("/")
         self.token = token
         s = requests.Session()
-        s.verify = False  # local/self-signed CA on the university server
+        s.verify = False
         s.cookies.set("BREEZESESSION", token)
         s.headers.update({"User-Agent": "Mozilla/5.0"})
         if proxy:
@@ -87,7 +77,6 @@ class ConnectClient:
 
     def open_package(self, rec_id: str, progress=None) -> zipfile.ZipFile:
         return zipfile.ZipFile(io.BytesIO(self.download_package_bytes(rec_id, progress)))
-
 
 def read_member(zf: zipfile.ZipFile, name: str, encoding: str | None = "utf-8"):
     """Read one file from the package; text by default, bytes if encoding=None."""

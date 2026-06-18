@@ -1,12 +1,3 @@
-"""
-Part 2d — master-timeline reconstruction for mixed recordings
-(whiteboard + screen-share + fragmented audio).
-
-Adobe Connect records each stream as its own FLV whose timestamps restart at 0.
-`indexstream.xml` carries `streamAdded` events with the master-timeline
-`<startTime>` of every segment, so we can place each audio/screen-share segment
-where it really belongs (gaps become silence), instead of naively concatenating.
-"""
 from __future__ import annotations
 
 import os
@@ -22,7 +13,6 @@ _STREAM_RE = re.compile(
     re.S,
 )
 
-
 def parse_streams(indexstream_xml: str) -> list[dict]:
     """Unique stream segments with their master start time (ms), name and type."""
     seen, out = set(), []
@@ -34,7 +24,6 @@ def parse_streams(indexstream_xml: str) -> list[dict]:
         out.append({"start_ms": int(m.group(1)), "name": name,
                     "pub": m.group(3), "type": m.group(4)})
     return out
-
 
 def build_master_audio(zf, streams, workdir, out_path, min_bytes=50_000) -> str | None:
     """Mix every cameraVoip segment onto one full-length track at its real offset."""

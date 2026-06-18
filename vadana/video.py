@@ -1,12 +1,3 @@
-"""
-Part 2c — assemble the synced whiteboard video.
-
-Strategy (efficient + exact): the whiteboard only changes at discrete event
-times. We replay the events, drawing incrementally onto per-page canvases, and
-emit a frame whenever the board changes (coalesced to a max frame rate). Each
-frame is held until the next change, so ffmpeg's concat demuxer reproduces the
-real drawing pace. Audio is muxed on the same recording timeline.
-"""
 from __future__ import annotations
 
 import os
@@ -18,10 +9,8 @@ from PIL import Image, ImageDraw
 from . import whiteboard as wb_mod
 from .whiteboard import Whiteboard, NATIVE_W, NATIVE_H
 
-
 def _blank(scale):
     return Image.new("RGB", (NATIVE_W * scale, NATIVE_H * scale), "white")
-
 
 def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
                  max_fps: float = 4.0, progress=None) -> list[tuple[float, str]]:
@@ -30,7 +19,7 @@ def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
     progress(done, total) is called as events are processed (for a progress bar)."""
     os.makedirs(frames_dir, exist_ok=True)
     W, H = NATIVE_W * scale, NATIVE_H * scale
-    interval = 1000.0 / max_fps          # ms between distinct frames
+    interval = 1000.0 / max_fps
 
     page_canvas: dict[int, Image.Image] = {}
     page_shapes: dict[int, dict] = {}
@@ -75,11 +64,9 @@ def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
             last_emit = t
         if progress and ev_i % 15 == 0:
             progress(ev_i, total_ev)
-    # always emit the final state
     if current_page is not None and (not frames or frames[-1][0] < wb.duration_ms / 1000.0):
         emit(wb.duration_ms, current_page)
     return frames
-
 
 def _concat_file(frames, list_path, tail_seconds=3.0):
     """ffmpeg concat demuxer list with per-frame durations."""
@@ -89,11 +76,9 @@ def _concat_file(frames, list_path, tail_seconds=3.0):
         dur = max(0.04, end - start)
         lines.append(f"file '{os.path.abspath(path).replace(chr(92), '/')}'")
         lines.append(f"duration {dur:.3f}")
-    # concat demuxer needs the last file repeated
     lines.append(f"file '{os.path.abspath(frames[-1][1]).replace(chr(92), '/')}'")
     with open(list_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
-
 
 def make_whiteboard_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0,
                           progress=None):
@@ -128,10 +113,9 @@ def make_whiteboard_video(zf, work_dir, out_path, scale: int = 2, max_fps: float
     rep("done", 100)
     return out_path
 
-
 def pdf_frames(pdf_paths, frames_dir, canvas=(1280, 960)):
     """Render every page of the PDFs onto a uniform white canvas. Returns png paths."""
-    import fitz  # PyMuPDF
+    import fitz
     from PIL import Image
     os.makedirs(frames_dir, exist_ok=True)
     W, H = canvas
@@ -150,7 +134,6 @@ def pdf_frames(pdf_paths, frames_dir, canvas=(1280, 960)):
             k += 1
         doc.close()
     return out
-
 
 def make_media_video(zf, work_dir, out_path, pdf_paths=None, scale: int = 2, progress=None):
     """Archive video for non-whiteboard recordings: a slideshow of the shared
@@ -183,7 +166,6 @@ def make_media_video(zf, work_dir, out_path, pdf_paths=None, scale: int = 2, pro
     rep("done", 100)
     return out_path
 
-
 def _meta_seconds(zf, xml_name) -> float:
     try:
         d = zf.read(xml_name).decode("utf-8", "replace")
@@ -191,7 +173,6 @@ def _meta_seconds(zf, xml_name) -> float:
         return 0.0
     m = re.search(r"onMetaData.*?<Number><!\[CDATA\[([\d.]+)\]\]>", d, re.S)
     return float(m.group(1)) if m else 0.0
-
 
 def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0, progress=None):
     """Mixed recording -> one 16:9 MP4 on the master timeline: the whiteboard
@@ -215,14 +196,12 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
 
     master_s = max(_meta_seconds(zf, "mainstream.xml"), _meta_seconds(zf, "ftcontent1.xml"),
                    wb.duration_ms / 1000.0)
-    OUT_W, OUT_H = 1920, 1080      # 16:9 output, so a player never stretches a 4:3 frame
-    RENDER_SCALE = 3               # render the board large, then shrink -> smooth strokes
+    OUT_W, OUT_H = 1920, 1080
+    RENDER_SCALE = 3
 
     rep("audio", 10)
     audio_path = tl.build_master_audio(zf, streams, work_dir, os.path.join(work_dir, "master.m4a"))
 
-    # whiteboard: render native 4:3 at high res, then fit it (centred, pillar-boxed)
-    # onto the 16:9 sheet. the high->low shrink is what anti-aliases the handwriting.
     rep("render", 22)
     wb_frames = []
     if wb.pages:
@@ -240,9 +219,8 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
             sheet.save(fp)
             wb_frames.append((t, fp))
             if i % 8 == 0:
-                rep("render", 50 + int(10 * i / nraw))   # keep the bar moving while fitting
+                rep("render", 50 + int(10 * i / nraw))
 
-    # screen-share: extract 1 fps frames scaled to fill the 16:9 frame, at master offsets
     rep("render", 62)
     ss_dir = os.path.join(work_dir, "ss")
     os.makedirs(ss_dir, exist_ok=True)
@@ -285,7 +263,6 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
     rep("done", 100)
     return out_path
 
-
 def _mux_timed(frames, audio_path, out_path, workdir, master_s, progress=None):
     list_path = os.path.join(workdir, "frames.txt")
     _concat_file(frames, list_path, tail_seconds=max(1.0, master_s - frames[-1][0]))
@@ -314,7 +291,6 @@ def _mux_timed(frames, audio_path, out_path, workdir, master_s, progress=None):
         raise RuntimeError(f"ffmpeg timed mux failed (code {proc.returncode})")
     return out_path
 
-
 def mux(frames, audio_path, out_path, workdir, audio_skip_seconds=0.0, audio_offset_ms=0,
         progress=None, out_fps=None):
     """Combine timed frames + audio into an MP4.
@@ -325,19 +301,19 @@ def mux(frames, audio_path, out_path, workdir, audio_skip_seconds=0.0, audio_off
     """
     list_path = os.path.join(workdir, "frames.txt")
     _concat_file(frames, list_path)
-    total_dur = max(0.1, frames[-1][0] - frames[0][0] + 3.0)   # ~output seconds
+    total_dur = max(0.1, frames[-1][0] - frames[0][0] + 3.0)
 
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-progress", "pipe:1", "-nostats",
            "-f", "concat", "-safe", "0", "-i", list_path]
     if audio_path:
         if audio_skip_seconds > 0:
-            cmd += ["-ss", f"{audio_skip_seconds:.3f}"]      # align audio to first stroke
+            cmd += ["-ss", f"{audio_skip_seconds:.3f}"]
         if audio_offset_ms:
             cmd += ["-itsoffset", f"{audio_offset_ms/1000.0:.3f}"]
         cmd += ["-i", audio_path]
     cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "26",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-movflags", "+faststart"]
-    if out_fps:                                  # fewer output frames -> far faster + smaller
+    if out_fps:
         cmd += ["-r", str(out_fps)]
     if audio_path:
         cmd += ["-c:a", "aac", "-b:a", "96k", "-shortest"]

@@ -1,11 +1,3 @@
-"""
-Part 1 — download the ORIGINAL shared PDFs from a recording.
-
-When a professor uploads a PPT/PDF into the Share pod, Connect keeps it as a
-separate content object (not inside the recording streams). The recording's
-mainstream.xml still records a `downloadUrl` for each shared file. We resolve
-that to the real source path and download the untouched PDF.
-"""
 from __future__ import annotations
 
 import os
@@ -15,7 +7,6 @@ from urllib.parse import urlparse, parse_qs, unquote_plus, quote
 from .connect import ConnectClient, read_member
 
 _DOWNLOAD_RE = re.compile(r"<downloadUrl><!\[CDATA\[([^\]]+)\]\]></downloadUrl>")
-
 
 def find_shared_files(mainstream_xml: str) -> list[tuple[str, str]]:
     """Return unique (source_base, filename) pairs in first-seen order.
@@ -31,16 +22,14 @@ def find_shared_files(mainstream_xml: str) -> list[tuple[str, str]]:
             continue
         seen.add(rel)
         q = parse_qs(urlparse(rel).query)
-        base = q.get("download-url", [""])[0]          # /_a7/<cid>/source/
+        base = q.get("download-url", [""])[0]
         name = unquote_plus(q.get("name", ["file.pdf"])[0])
         if base:
             out.append((base, name))
     return out
 
-
 def _safe_name(name: str) -> str:
     return re.sub(r'[\\/:*?"<>|]', "_", name).strip() or "file"
-
 
 CATEGORIES = {
     "doc": {".pdf", ".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx", ".txt"},
@@ -49,14 +38,12 @@ CATEGORIES = {
     "image": {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"},
 }
 
-
 def category_of(name: str) -> str:
     ext = os.path.splitext(name)[1].lower()
     for cat, exts in CATEGORIES.items():
         if ext in exts:
             return cat
     return "other"
-
 
 def download_slides(client: ConnectClient, rec_id: str, out_dir: str, zf=None,
                     progress=None, exts=None) -> list[str]:
@@ -86,7 +73,6 @@ def download_slides(client: ConnectClient, rec_id: str, out_dir: str, zf=None,
             continue
         r = client.get(f"{base}{quote(name)}?download=true", timeout=600)
         ct = r.headers.get("content-type", "").lower()
-        # accept any real file; reject only login/error HTML pages
         ok = r.status_code == 200 and r.content and "text/html" not in ct
         if ok:
             path = os.path.join(out_dir, _safe_name(name))

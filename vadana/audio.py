@@ -1,17 +1,9 @@
-"""
-Part 2b — extract the lecture audio from the recording package.
-
-The spoken audio lives in the `cameraVoip_*.flv` streams (audio + webcam).
-We keep the main (largest) segments, concatenate them in order, and write a
-single audio file. ffmpeg must be on PATH.
-"""
 from __future__ import annotations
 
 import os
 import re
 import subprocess
 import zipfile
-
 
 def ffmpeg_available() -> bool:
     try:
@@ -20,11 +12,9 @@ def ffmpeg_available() -> bool:
     except (OSError, subprocess.CalledProcessError):
         return False
 
-
 def _seg_key(name: str):
     nums = re.findall(r"\d+", name)
     return [int(n) for n in nums]
-
 
 def main_audio_segments(zf: zipfile.ZipFile, min_bytes: int = 100_000) -> list[str]:
     """cameraVoip FLVs big enough to be the lecturer's stream, in playback order."""
@@ -32,7 +22,6 @@ def main_audio_segments(zf: zipfile.ZipFile, min_bytes: int = 100_000) -> list[s
             if i.filename.lower().startswith("cameravoip") and i.filename.lower().endswith(".flv")
             and i.file_size >= min_bytes]
     return sorted(segs, key=_seg_key)
-
 
 def _xml_total_seconds(zf, flv_names) -> float:
     """Total audio duration from the cameraVoip XML metadata (FLV ffprobe says N/A)."""
@@ -46,7 +35,6 @@ def _xml_total_seconds(zf, flv_names) -> float:
         if m:
             total += float(m.group(1))
     return total
-
 
 def extract_audio(zf: zipfile.ZipFile, workdir: str, out_path: str, progress=None) -> str | None:
     """Concatenate the main cameraVoip audio into out_path. progress(frac) 0..1."""
@@ -90,7 +78,6 @@ def extract_audio(zf: zipfile.ZipFile, workdir: str, out_path: str, progress=Non
     else:
         subprocess.run(cmd, check=True)
     return out_path
-
 
 def duration_seconds(path: str) -> float:
     out = subprocess.run(

@@ -5,14 +5,12 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# adjust User and the repo path:
 User=root
 WorkingDirectory=/opt/vadana-extractor
 EnvironmentFile=/opt/vadana-extractor/bot/.env
-ExecStart=/usr/bin/python3 -m bot.bot
+ExecStart=/opt/vadana-extractor/venv/bin/python -m bot.bot
 Restart=always
 RestartSec=5
-# light resource caps (per-user limits live in the bot itself)
 MemoryMax=1G
 CPUQuota=150%
 

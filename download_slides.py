@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""
-Part 1 CLI — download the original shared PDFs from Vadana recordings.
-
-Usage (any one):
-  python download_slides.py "<recording-url-with-?session=...>" ["<url2>" ...]
-  python download_slides.py            # reads links.txt, or prompts you to paste
-Output: ./slides/<recording-id>/<chapter>.pdf
-"""
 import os
 import sys
 
@@ -17,7 +9,6 @@ try:
     sys.stdout.reconfigure(encoding="utf-8")
 except Exception:
     pass
-
 
 def collect_links() -> list[str]:
     args = [a for a in sys.argv[1:] if a.strip()]
@@ -40,7 +31,6 @@ def collect_links() -> list[str]:
             break
         links.append(line)
     return links
-
 
 def main():
     links = collect_links()
@@ -67,7 +57,6 @@ def main():
         total_ok += len(saved)
         total += len(saved)
     print(f"\n[*] done: {total_ok} file(s) -> ./slides/")
-
 
 if __name__ == "__main__":
     main()
