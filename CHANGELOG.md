@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.5.3
++ One-line installer (`install.sh` self-clones the repo)
++ Windows setup steps in the README
+
 ## v1.5.2
 + Formal README wording
 + Admins are exempt from the daily video quota
