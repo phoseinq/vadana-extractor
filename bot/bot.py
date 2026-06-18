@@ -295,14 +295,15 @@ async def start(m: Message):
 async def profile(cb: CallbackQuery):
     uid = cb.from_user.id
     s = STORE["stats"].get(str(uid), {"files": 0, "wb": 0, "videos": 0})
-    left = config.MAX_VIDEO_PER_DAY - _video_used_today(uid)
+    quota = ("🎟 سهمیهٔ ویدیو: نامحدود (ادمین)" if uid in config.ADMINS else
+             f"🎟 سهمیهٔ ویدیوی امروز: {config.MAX_VIDEO_PER_DAY - _video_used_today(uid)} از {config.MAX_VIDEO_PER_DAY}")
     await _show(cb,
                 f"👤 *پروفایلِ شما*\n\n"
                 f"🆔 شناسه: `{uid}`\n"
                 f"📄 فایل‌های دریافت‌شده: {s['files']}\n"
                 f"📝 وایت‌بردهای دریافت‌شده: {s['wb']}\n"
                 f"🎬 ویدیوهای ساخته‌شده: {s['videos']}\n"
-                f"🎟 سهمیهٔ ویدیوی امروز: {left} از {config.MAX_VIDEO_PER_DAY}",
+                f"{quota}",
                 BACK_KB)
     await cb.answer()
 
@@ -568,7 +569,7 @@ async def do_video(m, rec):
         STORE["video"].pop(rec.rec_id, None)
         _store_save()
 
-    if _video_used_today(uid) >= config.MAX_VIDEO_PER_DAY:
+    if uid not in config.ADMINS and _video_used_today(uid) >= config.MAX_VIDEO_PER_DAY:
         await status.edit_text(f"⛔ سقفِ روزانهٔ ساختِ ویدیو ({config.MAX_VIDEO_PER_DAY} عدد) تکمیل شده است. "
                                "لطفاً فردا دوباره تلاش کنید. (ویدیوهای ساخته‌شدهٔ قبلی همچنان رایگان از آرشیو ارسال می‌شوند.)")
         return
@@ -606,12 +607,13 @@ async def do_video(m, rec):
         await status.edit_text("📤 در حال ذخیره و ارسال…")
         fid, _ = await _archive(tmp_out)
         _store_put("video", rec.rec_id, fid)
-        _video_inc(uid)
+        if uid not in config.ADMINS:
+            _video_inc(uid)
         await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id))
         _stat(uid, "videos")
-        left = config.MAX_VIDEO_PER_DAY - _video_used_today(uid)
-        await status.edit_text(f"✅ ویدیوی آرشیو ارسال شد. "
-                               f"(سهمیهٔ امروزِ شما: {left} از {config.MAX_VIDEO_PER_DAY}) (/start)")
+        quota = ("بدونِ محدودیت (ادمین)" if uid in config.ADMINS else
+                 f"سهمیهٔ امروز: {config.MAX_VIDEO_PER_DAY - _video_used_today(uid)} از {config.MAX_VIDEO_PER_DAY}")
+        await status.edit_text(f"✅ ویدیوی آرشیو ارسال شد. ({quota}) (/start)")
     finally:
         stop.set()
         if not poller.done():
