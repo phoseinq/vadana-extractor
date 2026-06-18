@@ -1,0 +1,2 @@
+# colored inline-button styles need aiogram >= 3.29 (Bot API 9.4)
+aiogram>=3.29

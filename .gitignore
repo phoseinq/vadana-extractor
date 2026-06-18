@@ -1,0 +1,22 @@
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# secrets & runtime data
+.env
+bot/.env
+bot_work/
+cache/
+logs/
+slides/
+out/
+
+# media / packages (downloaded or generated)
+*.mp4
+*.flv
+*.zip
+*.m4a

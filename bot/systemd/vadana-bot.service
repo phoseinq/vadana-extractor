@@ -1,0 +1,20 @@
+[Unit]
+Description=Vadana slides Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# adjust User and the repo path:
+User=root
+WorkingDirectory=/opt/vadana-extractor
+EnvironmentFile=/opt/vadana-extractor/bot/.env
+ExecStart=/usr/bin/python3 -m bot.bot
+Restart=always
+RestartSec=5
+# light resource caps (per-user limits live in the bot itself)
+MemoryMax=1G
+CPUQuota=150%
+
+[Install]
+WantedBy=multi-user.target
