@@ -47,13 +47,21 @@ It ships both as a **Telegram bot** (Persian, multi-user) and as a pair of stand
 
 ---
 
-### 🚀 CLI usage
+### 🚀 CLI usage (Windows or any computer)
 
-Install the dependencies (`requests`, `pillow`, `img2pdf`, `pymupdf`):
+One-time setup — on **Windows**:
+
+1. Install [Python 3.11–3.13](https://www.python.org/downloads/) and tick **Add Python to PATH** in the installer.
+2. Install **ffmpeg** (only needed for the video): run `winget install ffmpeg`, or download a build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) and add its `bin` folder to PATH.
+3. Download the code and install the Python packages:
 
 ```bash
+git clone https://github.com/phoseinq/vadana-extractor
+cd vadana-extractor
 pip install -r requirements.txt
 ```
+
+Inside Iran you don't need a proxy — it reaches Vadana directly. Now run the tools:
 
 **1. Download the original shared files**
 
@@ -210,13 +218,23 @@ CI runs the suite (ruff + pytest on Python 3.11 & 3.12) on every push.
 
 ---
 
-### 🚀 خط‌فرمان
+### 🚀 خط‌فرمان (ویندوز یا هر کامپیوتری)
 
-اول وابستگی‌ها (`requests`، `pillow`، `img2pdf`، `pymupdf`):
+راه‌اندازیِ اولیه روی **ویندوز**:
+
+**۱)** [پایتون ۳.۱۱ تا ۳.۱۳](https://www.python.org/downloads/) را نصب کنید و گزینهٔ **Add Python to PATH** را در نصب‌کننده تیک بزنید.
+
+**۲)** **ffmpeg** را نصب کنید (فقط برای ویدیو لازم است): دستورِ `winget install ffmpeg` را بزنید، یا یک نسخه از [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) بگیرید و پوشهٔ `bin` آن را به PATH اضافه کنید.
+
+**۳)** کد و پکیج‌های پایتون را بگیرید:
 
 ```bash
+git clone https://github.com/phoseinq/vadana-extractor
+cd vadana-extractor
 pip install -r requirements.txt
 ```
+
+داخلِ ایران پروکسی لازم ندارید — مستقیم به وادانا می‌رسد. حالا ابزارها را اجرا کنید:
 
 **۱) دانلودِ فایل‌های اشتراکیِ اصل:**
 
