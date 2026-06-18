@@ -371,7 +371,7 @@ async def report_start(cb: CallbackQuery):
     await cb.message.answer(
         "🛑 *گزارشِ مشکل*\n\nاگر مایل بودید، خلاصهٔ مشکل را در یک پیام بنویسید (اختیاری).\n"
         "برای ثبتِ بدونِ توضیح، /skip را بفرستید.", parse_mode="Markdown")
-    await cb.answer("منتظرِ توضیحِ شما هستم…")
+    await cb.answer()
 
 @dp.message(lambda m: m.from_user and m.from_user.id in PENDING_REPORT)
 async def handle_report_text(m: Message):
@@ -391,7 +391,7 @@ async def handle_report_text(m: Message):
             await bot.send_message(config.STORAGE_CHANNEL, text, parse_mode="Markdown")
     except Exception:
         logging.error("report forward failed:\n%s", traceback.format_exc())
-    await m.reply("✅ گزارشِ شما ثبت و برای بررسی ارسال شد. ممنون از همراهی! 🌱")
+    await m.reply("✅ گزارشِ شما ثبت و برای بررسی ارسال شد.")
 
 @dp.message(F.text.regexp(LINK_RE.pattern))
 async def handle_link(m: Message):
@@ -413,7 +413,7 @@ async def handle_link(m: Message):
         await m.reply("❌ فقط لینکِ معتبرِ آرشیوِ وادانا (vadavc30.ec.iau.ir) پذیرفته می‌شود.")
         return
     if not rec.token:
-        await m.reply("🤔 این لینک کامل نیست. لطفاً وارد آرشیو شوید، روی کلاس بزنید و "
+        await m.reply("⚠️ این لینک کامل نیست. لطفاً وارد آرشیو شوید، روی کلاس بزنید و "
                       "لینکِ بالای مرورگر را به‌طور کامل کپی کنید.")
         return
     mode = USER_MODE[uid]
@@ -503,7 +503,7 @@ async def do_files(m, rec, ftype):
     sent = sum([await _send_fid(m, it["fid"], it.get("v", False), it["name"]) for it in items])
     for _ in range(sent):
         _stat(uid, "files")
-    await status.edit_text(f"✅ {sent} فایل ارسال شد. 🌱\nبرای ضبطِ بعدی /start را بزنید.",
+    await status.edit_text(f"✅ {sent} فایل ارسال شد.\nبرای ضبطِ بعدی /start را بزنید.",
                            reply_markup=_report_kb(rec.rec_id))
 
 async def do_whiteboard(m, rec):
@@ -515,7 +515,7 @@ async def do_whiteboard(m, rec):
         await status.edit_text("📤 در حال ارسال… (از آرشیو)")
         if await _send_fid(m, fid, False, f"وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id)):
             _stat(uid, "wb")
-            await status.edit_text("✅ فایلِ PDFِ وایت‌برد ارسال شد. 🌱  (/start)")
+            await status.edit_text("✅ فایلِ PDFِ وایت‌برد ارسال شد. (/start)")
             return
         STORE["wb"].pop(rec.rec_id, None)
         _store_save()
@@ -548,7 +548,7 @@ async def do_whiteboard(m, rec):
         _store_put("wb", rec.rec_id, fid)
         await _send_fid(m, fid, False, f"وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id))
         _stat(uid, "wb")
-        await status.edit_text("✅ فایلِ PDFِ وایت‌برد ارسال شد. 🌱  (/start)")
+        await status.edit_text("✅ فایلِ PDFِ وایت‌برد ارسال شد. (/start)")
     finally:
         stop.set()
         if not poller.done():
@@ -563,7 +563,7 @@ async def do_video(m, rec):
     if fid:
         await status.edit_text("📤 در حال ارسال… (از آرشیو)")
         if await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id)):
-            await status.edit_text("✅ ویدیو ارسال شد. 🌱  (/start)")
+            await status.edit_text("✅ ویدیو ارسال شد. (/start)")
             return
         STORE["video"].pop(rec.rec_id, None)
         _store_save()
@@ -610,7 +610,7 @@ async def do_video(m, rec):
         await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id))
         _stat(uid, "videos")
         left = config.MAX_VIDEO_PER_DAY - _video_used_today(uid)
-        await status.edit_text(f"✅ ویدیوی آرشیو ارسال شد. 🌱  "
+        await status.edit_text(f"✅ ویدیوی آرشیو ارسال شد. "
                                f"(سهمیهٔ امروزِ شما: {left} از {config.MAX_VIDEO_PER_DAY}) (/start)")
     finally:
         stop.set()
