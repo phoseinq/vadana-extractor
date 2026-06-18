@@ -1,12 +1,26 @@
 #!/usr/bin/env bash
-# vadana — management CLI for the Vadana bot service
+# vadana — download recordings + manage the Vadana bot service
 SERVICE=vadana-bot
 DIR=/opt/vadana-extractor
 ENVF="$DIR/bot/.env"
-PY="$DIR/venv/bin/python"
+PY="$DIR/venv/bin/python"; [ -x "$PY" ] || PY=python3
+
+dl() {
+  local type="$1" url="$2"
+  [ -n "$url" ] || read -rp "  recording URL: " url
+  [ -n "$url" ] || { echo "no URL"; return 1; }
+  ( cd "$DIR" && case "$type" in
+      files)      "$PY" download_slides.py "$url" ;;
+      whiteboard) "$PY" make_video.py "$url" --pages-only ;;
+      video)      "$PY" make_video.py "$url" ;;
+    esac )
+}
 
 run() {
   case "$1" in
+    files)          dl files "$2" ;;
+    whiteboard|wb)  dl whiteboard "$2" ;;
+    video)          dl video "$2" ;;
     update)
       cd "$DIR" && git pull --ff-only \
         && "$DIR/venv/bin/pip" install -q -r requirements.txt -r bot/requirements.txt \
@@ -31,16 +45,18 @@ run() {
 
 menu() {
   while true; do
-    st=$(systemctl is-active "$SERVICE" 2>/dev/null)
-    printf '\n  \033[1;36mVadana bot\033[0m — %s\n' "$st"
-    echo "  1) status    2) logs      3) restart"
-    echo "  4) start     5) stop      6) update"
-    echo "  7) edit env  8) uninstall 0) exit"
+    st=$(systemctl is-active "$SERVICE" 2>/dev/null || echo "n/a")
+    printf '\n  \033[1;36mVadana\033[0m  ·  service: %s\n' "$st"
+    echo "  download   1) files     2) whiteboard PDF   3) video"
+    echo "  service    4) status    5) logs      6) restart"
+    echo "             7) start     8) stop       9) update"
+    echo "            10) edit env  11) uninstall  0) exit"
     read -rp "  > " n
     case "$n" in
-      1) run status ;; 2) run logs ;; 3) run restart ;;
-      4) run start ;; 5) run stop ;; 6) run update ;;
-      7) run env ;; 8) run uninstall ;; 0|q|"") exit 0 ;;
+      1) dl files ;; 2) dl whiteboard ;; 3) dl video ;;
+      4) run status ;; 5) run logs ;; 6) run restart ;;
+      7) run start ;; 8) run stop ;; 9) run update ;;
+      10) run env ;; 11) run uninstall ;; 0|q|"") exit 0 ;;
     esac
   done
 }
