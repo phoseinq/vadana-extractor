@@ -2,6 +2,7 @@
 
 # 🎓 Vadana Extractor
 
+[![CI](https://github.com/phoseinq/vadana-extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/phoseinq/vadana-extractor/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Telegram](https://img.shields.io/badge/Telegram-Bot-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/bots)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-required-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
@@ -145,6 +146,36 @@ Every recording exposes an offline package at `/<id>/output/<id>.zip?download=zi
 - **Whiteboard** lives in `ftcontent*.xml` as timed vector events on per-page SharedObjects (`set_WB_So_<page>`); strokes are normalized to each shape's bounding box. The events are replayed to redraw the board.
 - **Audio & screen-share** segments are placed on the master timeline from `indexstream.xml` offsets and muxed together with FFmpeg.
 
+Concurrency is bounded by asyncio semaphores (a built-in queue): when the server is busy, extra requests wait their turn instead of piling on.
+
+---
+
+### 🌐 HTTP API (optional)
+
+Turn the extractor into a small service:
+
+```bash
+pip install -r requirements-api.txt
+uvicorn api:app --host 0.0.0.0 --port 8000
+```
+
+```bash
+curl -X POST localhost:8000/extract -H "Content-Type: application/json" -d '{"url":"https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true","kind":"files"}' -o files.zip
+```
+
+`kind` is `files` (a zip of the shared files) or `whiteboard` (the board as a PDF).
+
+---
+
+### 🧪 Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+CI runs the suite (ruff + pytest on Python 3.11 & 3.12) on every push.
+
 ---
 
 ## فارسی
@@ -267,6 +298,30 @@ vadana uninstall
 | `uninstall` | حذفِ سرویس (قبلِ پاکِ داده می‌پرسه) |
 
 اگه لینک ندی، خودش لینک رو می‌پرسه — هم `vadana video` (prompt می‌گیره) و هم `vadana video "https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true"` کار می‌کنه.
+
+---
+
+### 🌐 API (اختیاری)
+
+تبدیلِ ابزار به یک سرویس:
+
+```bash
+pip install -r requirements-api.txt
+uvicorn api:app --host 0.0.0.0 --port 8000
+```
+
+`POST /extract` با بدنهٔ `{"url": "...", "kind": "files"}` یه zip از فایل‌ها برمی‌گردونه (یا با `"kind": "whiteboard"` یه PDF).
+
+---
+
+### 🧪 تست
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+CI روی هر push تست‌ها رو اجرا می‌کنه (ruff + pytest روی پایتون ۳.۱۱ و ۳.۱۲).
 
 </div>
 

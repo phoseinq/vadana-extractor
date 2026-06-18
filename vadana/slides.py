@@ -29,7 +29,11 @@ def find_shared_files(mainstream_xml: str) -> list[tuple[str, str]]:
     return out
 
 def _safe_name(name: str) -> str:
-    return re.sub(r'[\\/:*?"<>|]', "_", name).strip() or "file"
+    """Filename safe to join onto an output dir — strips any directory part and
+    leading dots so a crafted name can't escape via path traversal (e.g. '..')."""
+    name = name.replace("\\", "/").rsplit("/", 1)[-1]
+    name = re.sub(r'[:*?"<>|]', "_", name).strip().lstrip(".")
+    return name or "file"
 
 CATEGORIES = {
     "doc": {".pdf", ".ppt", ".pptx", ".doc", ".docx", ".xls", ".xlsx", ".txt"},

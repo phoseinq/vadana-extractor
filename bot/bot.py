@@ -9,7 +9,9 @@ import shutil
 import sys
 import time
 import traceback
+import zipfile
 from datetime import date
+from logging.handlers import RotatingFileHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -29,8 +31,16 @@ from vadana import video as video_mod
 from vadana import whiteboard as wb_mod
 
 os.makedirs(config.LOG_DIR, exist_ok=True)
-logging.basicConfig(filename=os.path.join(config.LOG_DIR, "errors.log"),
-                    level=logging.ERROR, format="%(asctime)s %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+    handlers=[
+        RotatingFileHandler(os.path.join(config.LOG_DIR, "bot.log"),
+                            maxBytes=2_000_000, backupCount=5, encoding="utf-8"),
+        logging.StreamHandler(),
+    ],
+)
+log = logging.getLogger("vadana.bot")
 
 STORE_PATH = os.path.join(config.CACHE_DIR, "store.json")
 
@@ -101,6 +111,19 @@ VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".m4v"}
 
 FRESH = ("در صورتِ تکرارِ مشکل، احتمالاً لینک منقضی شده است. لطفاً دوباره وارد آرشیو شوید، "
          "روی همان کلاس بزنید و لینکِ تازهٔ بالای مرورگر را کپی و ارسال کنید.")
+
+def _friendly_error(exc: Exception) -> str:
+    """Map a job exception to a clear Persian message (session / timeout / disk / corrupt)."""
+    s = str(exc).lower()
+    if isinstance(exc, zipfile.BadZipFile) or "not a package" in s:
+        return "❌ پکیجِ ضبط ناقص یا خراب دریافت شد. لطفاً چند لحظه بعد دوباره تلاش کنید."
+    if "session" in s or "expired" in s or "401" in s or "403" in s:
+        return f"❌ سشن یا لینکِ شما منقضی شده است.\n{FRESH}"
+    if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
+        return "❌ فضای دیسکِ سرور موقتاً پر است؛ لطفاً کمی بعد دوباره تلاش کنید."
+    if "timed out" in s or "timeout" in s or "connection" in s or "proxy" in s:
+        return "❌ ارتباط با وادانا برقرار نشد (شبکه یا پروکسی). لطفاً دوباره تلاش کنید."
+    return f"❌ متأسفانه مشکلی پیش آمد. لطفاً همان لینک را دوباره ارسال کنید.\n{FRESH}"
 
 STAGE = {
     "parse": "🔍 در حال بررسیِ نوعِ ضبط…",
@@ -398,6 +421,7 @@ async def handle_link(m: Message):
 async def _run_job(m, rec, mode):
     uid = m.from_user.id
     ok = False
+    log.info("job start: uid=%s mode=%s rec=%s", uid, mode, rec.rec_id)
     try:
         if mode == "video":
             await do_video(m, rec)
@@ -408,14 +432,15 @@ async def _run_job(m, rec, mode):
         ok = True
     except asyncio.CancelledError:
         pass
-    except Exception:
-        logging.error("job failed [rec=%s mode=%s uid=%s]\n%s",
-                      rec.rec_id, mode, uid, traceback.format_exc())
+    except Exception as e:
+        log.error("job failed [rec=%s mode=%s uid=%s]\n%s",
+                  rec.rec_id, mode, uid, traceback.format_exc())
         try:
-            await m.answer(f"❌ متأسفانه مشکلی پیش آمد. لطفاً همان لینک را دوباره ارسال کنید.\n{FRESH}")
+            await m.answer(_friendly_error(e))
         except Exception:
             pass
     finally:
+        log.info("job done: uid=%s mode=%s rec=%s ok=%s", uid, mode, rec.rec_id, ok)
         ACTIVE_USERS.discard(uid)
         ACTIVE_TASKS.pop(uid, None)
         ACTIVE_STOP.pop(uid, None)
