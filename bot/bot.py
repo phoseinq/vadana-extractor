@@ -106,6 +106,11 @@ def _report_kb(rec_id):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛑 گزارشِ مشکل", callback_data=f"report:{rec_id}", style="danger")]])
 
+SUPPORT_KB = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="🛑 گزارشِ مشکل", callback_data="report:support", style="danger")],
+    [InlineKeyboardButton(text="⬅️ بازگشت به منو", callback_data="menu:main")],
+])
+
 FT_LABEL = {"doc": "سند", "audio": "صدا", "video": "ویدیو", "image": "تصویر", "all": "فایل"}
 VIDEO_EXTS = {".mp4", ".mkv", ".mov", ".webm", ".m4v"}
 
@@ -303,7 +308,7 @@ async def profile(cb: CallbackQuery):
 
 @dp.callback_query(F.data == "menu:support")
 async def support(cb: CallbackQuery):
-    await _show(cb, config.SUPPORT_TEXT or "💬 *پشتیبانی*\n\nبه‌زودی تکمیل می‌شود…", BACK_KB)
+    await _show(cb, config.SUPPORT_TEXT or "💬 *پشتیبانی*\n\nبه‌زودی تکمیل می‌شود…", SUPPORT_KB)
     await cb.answer()
 
 @dp.callback_query(F.data == "job_cancel")

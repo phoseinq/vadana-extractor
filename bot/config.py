@@ -14,7 +14,10 @@ ALLOW_VIDEO = os.environ.get("ALLOW_VIDEO", "0") == "1"
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "1950"))
 WORK_DIR = os.environ.get("WORK_DIR", "bot_work")
 CACHE_DIR = os.environ.get("CACHE_DIR", "cache")
-SUPPORT_TEXT = os.environ.get("SUPPORT_TEXT", "").replace("\\n", "\n")
+_support_file = os.path.join(os.path.dirname(__file__), "support.txt")
+SUPPORT_TEXT = (open(_support_file, encoding="utf-8").read().strip()
+                if os.path.exists(_support_file)
+                else os.environ.get("SUPPORT_TEXT", "").replace("\\n", "\n"))
 LOCAL_API_URL = os.environ.get("LOCAL_API_URL") or None
 LOG_DIR = os.environ.get("LOG_DIR", "logs")
 STORAGE_CHANNEL = int(os.environ.get("STORAGE_CHANNEL", "0")) or None
