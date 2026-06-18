@@ -21,7 +21,7 @@
 
 ### 📖 Description
 
-**Vadana Extractor** recovers study material from Adobe Connect ("Vadana", `vadavc30.ec.iau.ir`) class recordings — straight from each recording's own offline package, using your own session. The slides you could view but never download, the whiteboard that vanished with the browser tab, the lecture sealed behind a player that still believes in Flash: it takes all of it back, politely.
+**Vadana Extractor** recovers study material from Adobe Connect ("Vadana", `vadavc30.ec.iau.ir`) class recordings — straight from each recording's own offline package, using your own session. The slides you can see but not download, the whiteboard that disappears when you close the tab, the recordings stuck in an old Flash-style player — it pulls all of it back out.
 
 It ships both as a **Telegram bot** (Persian, multi-user) and as a pair of standalone **CLI tools**.
 
@@ -184,7 +184,7 @@ CI runs the suite (ruff + pytest on Python 3.11 & 3.12) on every push.
 
 ### 📖 معرفی
 
-**Vadana Extractor** جزوه و محتوای درسی را از ضبط‌های کلاسِ ادوبی کانکت («وادانا»، `vadavc30.ec.iau.ir`) بیرون می‌کشد — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط و با سشنِ خودتان. اسلایدهایی که می‌دیدید اما هرگز دانلود نمی‌شدند، وایت‌بردی که با بستنِ تب ناپدید می‌شد، و درسی که پشتِ پلیری از عهدِ فلش حبس بود: همه را مؤدبانه پس می‌گیرد.
+**Vadana Extractor** جزوه و محتوای درسی را از ضبط‌های کلاسِ ادوبی کانکت («وادانا»، `vadavc30.ec.iau.ir`) بیرون می‌کشد — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط و با سشنِ خودتان. اسلایدهایی که می‌بینید ولی دانلود نمی‌شوند، وایت‌بردی که با بستنِ تب از بین می‌رود، و ضبط‌هایی که فقط در یک پلیرِ قدیمیِ فلش باز می‌شوند — همه را بیرون می‌کشد.
 
 هم به‌صورتِ **رباتِ تلگرام** (فارسی، چندکاربره) عرضه می‌شود و هم دو **ابزارِ خط‌فرمان**.
 
