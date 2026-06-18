@@ -1,5 +1,9 @@
 # Changelog
 
+## v1.5.2
++ Formal README wording
++ Admins are exempt from the daily video quota
+
 ## v1.5.1
 + Cleaner wording in the bot's Persian messages
 
