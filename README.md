@@ -94,7 +94,7 @@ ALLOW_VIDEO=0
 | Variable | Meaning |
 | :-- | :-- |
 | `BOT_TOKEN` | bot token from [@BotFather](https://t.me/BotFather) — **required** |
-| `IRAN_PROXY` | **optional** — leave empty on a personal/Iran machine; set a reverse proxy only when hosting abroad |
+| `IRAN_PROXY` | **optional**, only when hosting abroad — an HTTP or SOCKS5 proxy: `http://user:pass@ip:port` or `socks5://user:pass@ip:port`. Leave empty on a personal/Iran machine |
 | `ADMINS` | comma-separated Telegram user ids allowed to build videos |
 | `STORAGE_CHANNEL` | private channel id used as a file cache (the bot must be an admin there) |
 | `ALLOW_VIDEO` | `1` lets everyone build videos (heavy); `0` keeps it admin-only |
@@ -107,9 +107,9 @@ ALLOW_VIDEO=0
 
 ```bash
 vadana
-vadana files "<url>"
-vadana whiteboard "<url>"
-vadana video "<url>"
+vadana files
+vadana whiteboard
+vadana video
 vadana status
 vadana logs
 vadana start
@@ -123,15 +123,17 @@ vadana uninstall
 | Command | Action |
 | :-- | :-- |
 | `vadana` | interactive menu |
-| `files "<url>"` | download the shared files |
-| `whiteboard "<url>"` | whiteboard as a PDF |
-| `video "<url>"` | synced archive video |
+| `files` | download the shared files |
+| `whiteboard` | whiteboard as a PDF |
+| `video` | synced archive video |
 | `status` | service status |
 | `logs` | live logs (Ctrl+C to exit) |
 | `start` / `stop` / `restart` | control the service |
 | `update` | git pull + reinstall deps + restart |
 | `env` | edit `.env`, then restart |
 | `uninstall` | remove the service (asks before deleting data) |
+
+A download command asks for the recording link if you don't pass one — both `vadana video` (prompts) and `vadana video "https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true"` work.
 
 ---
 
@@ -225,7 +227,7 @@ ALLOW_VIDEO=0
 | متغیر | توضیح |
 | :-- | :-- |
 | `BOT_TOKEN` | توکنِ ربات از [@BotFather](https://t.me/BotFather) — **اجباری** |
-| `IRAN_PROXY` | **اختیاری** — روی سیستمِ شخصی/ایران خالی بذار؛ فقط روی سرورِ خارج یه پروکسیِ ریورس بذار |
+| `IRAN_PROXY` | **اختیاری**، فقط روی سرورِ خارج — پروکسیِ HTTP یا SOCKS5: `http://user:pass@ip:port` یا `socks5://user:pass@ip:port`؛ روی سیستمِ شخصی/ایران خالی بذار |
 | `ADMINS` | آی‌دیِ کاربرهای تلگرام (با کاما) که اجازهٔ ساختِ ویدیو دارن |
 | `STORAGE_CHANNEL` | آی‌دیِ چنلِ خصوصی برای کشِ فایل‌ها (ربات باید ادمینش باشه) |
 | `ALLOW_VIDEO` | `۱` ساختِ ویدیو رو برای همه باز می‌کنه (سنگین)؛ `۰` فقط ادمین |
@@ -238,9 +240,9 @@ ALLOW_VIDEO=0
 
 ```bash
 vadana
-vadana files "<url>"
-vadana whiteboard "<url>"
-vadana video "<url>"
+vadana files
+vadana whiteboard
+vadana video
 vadana status
 vadana logs
 vadana start
@@ -254,15 +256,17 @@ vadana uninstall
 | دستور | کار |
 | :-- | :-- |
 | `vadana` | منوی تعاملی |
-| `files "<url>"` | دانلودِ فایل‌های اشتراکی |
-| `whiteboard "<url>"` | وایت‌برد به‌صورتِ PDF |
-| `video "<url>"` | ویدیوی همگامِ آرشیو |
+| `files` | دانلودِ فایل‌های اشتراکی |
+| `whiteboard` | وایت‌برد به‌صورتِ PDF |
+| `video` | ویدیوی همگامِ آرشیو |
 | `status` | وضعیتِ سرویس |
 | `logs` | لاگِ زنده (Ctrl+C برای خروج) |
 | `start` / `stop` / `restart` | کنترلِ سرویس |
 | `update` | git pull + نصبِ مجددِ وابستگی‌ها + ری‌استارت |
 | `env` | ویرایشِ `.env` و ری‌استارت |
 | `uninstall` | حذفِ سرویس (قبلِ پاکِ داده می‌پرسه) |
+
+اگه لینک ندی، خودش لینک رو می‌پرسه — هم `vadana video` (prompt می‌گیره) و هم `vadana video "https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true"` کار می‌کنه.
 
 </div>
 
