@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.1.4
++ When a job fails (e.g. a recording that needs login), the error now replaces the live progress message in place and the progress stops — no more leftover "0% در حال دریافت…" bar with the error as a separate message
+
 ## v2.1.3
 + A request waiting behind another job now clearly shows "🕐 در صفِ پردازش" (in queue) instead of a frozen 0% progress bar that looked stuck
 

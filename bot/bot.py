@@ -170,6 +170,7 @@ ACTIVE_USERS: set[int] = set()
 PENDING_REPORT: dict[int, str] = {}
 ACTIVE_TASKS: dict[int, asyncio.Task] = {}
 ACTIVE_STOP: dict[int, asyncio.Event] = {}
+ACTIVE_STATUS: dict[int, Message] = {}
 LAST_USED: dict[int, float] = {}
 SLIDES_SEM = asyncio.Semaphore(config.MAX_CONCURRENT)
 VIDEO_SEM = asyncio.Semaphore(config.MAX_VIDEO_CONCURRENT)
@@ -558,21 +559,31 @@ async def _run_job(m, rec, mode, uid):
         if _is_transient(e):
             _retry_put(uid, m.chat.id, rec, mode, USER_FILETYPE.get(uid, "all"))
             markup = RETRY_KB
+        text = _friendly_error(e)
+        status = ACTIVE_STATUS.get(uid)
         try:
-            await m.answer(_friendly_error(e), reply_markup=markup)
+            if status:
+                await status.edit_text(text, reply_markup=markup)
+            else:
+                await m.answer(text, reply_markup=markup)
         except Exception:
-            pass
+            try:
+                await m.answer(text, reply_markup=markup)
+            except Exception:
+                pass
     finally:
         log.info("job done: uid=%s mode=%s rec=%s ok=%s", uid, mode, rec.rec_id, ok)
         ACTIVE_USERS.discard(uid)
         ACTIVE_TASKS.pop(uid, None)
         ACTIVE_STOP.pop(uid, None)
+        ACTIVE_STATUS.pop(uid, None)
         if ok:
             USER_MODE.pop(uid, None)
             _retry_pop(uid)
 
 async def do_files(m, rec, ftype, uid):
     status = await m.reply("🔎 در حال بررسی…")
+    ACTIVE_STATUS[uid] = status
     manifest = _store_get("files", rec.rec_id)
 
     if manifest is None:
@@ -629,6 +640,7 @@ async def do_files(m, rec, ftype, uid):
 
 async def do_whiteboard(m, rec, uid):
     status = await m.reply("🔎 در حال بررسی…")
+    ACTIVE_STATUS[uid] = status
 
     fid = _store_get("wb", rec.rec_id)
     if fid:
@@ -681,6 +693,7 @@ async def do_whiteboard(m, rec, uid):
 
 async def do_video(m, rec, uid):
     status = await m.reply("🔎 در حال بررسی…")
+    ACTIVE_STATUS[uid] = status
 
     fid = _store_get("video", rec.rec_id)
     if fid:
