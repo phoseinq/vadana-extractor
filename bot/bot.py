@@ -103,6 +103,9 @@ CANCEL_KB = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="لغو", callback_data="job_cancel", style="danger")]])
 BACK_KB = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="⬅️ بازگشت به منو", callback_data="menu:main")]])
+RETRY_KB = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="🔄 تلاش مجدد", callback_data="job_retry", style="primary")],
+    [InlineKeyboardButton(text="⬅️ بازگشت به منو", callback_data="menu:main")]])
 
 def _report_kb(rec_id):
     return InlineKeyboardMarkup(inline_keyboard=[
@@ -131,8 +134,20 @@ def _friendly_error(exc: Exception) -> str:
     if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
         return "❌ فضای دیسکِ سرور موقتاً پر است؛ لطفاً کمی بعد دوباره تلاش کنید."
     if "timed out" in s or "timeout" in s or "connection" in s or "proxy" in s:
-        return "❌ ارتباط با وادانا برقرار نشد (شبکه یا پروکسی). لطفاً دوباره تلاش کنید."
+        return ("❌ ارتباط با وادانا چند بار قطع شد (اختلالِ شبکه).\n"
+                "چند لحظه صبر کن، بعد دکمهٔ «🔄 تلاش مجدد» را بزن تا کار از همین‌جا ادامه پیدا کند.")
     return f"❌ متأسفانه مشکلی پیش آمد. لطفاً همان لینک را دوباره ارسال کنید.\n{FRESH}"
+
+def _is_transient(exc: Exception) -> bool:
+    """True for faults a plain retry can fix (network blip / incomplete download),
+    False for ones it can't (needs login, expired session, disk full)."""
+    if isinstance(exc, zipfile.BadZipFile):
+        return True
+    s = str(exc).lower()
+    if any(k in s for k in ("not a package", "login", "session", "expired", "401", "403")):
+        return False
+    return any(k in s for k in ("timed out", "timeout", "connection", "proxy",
+                                "aborted", "disconnect", "reset"))
 
 STAGE = {
     "parse": "🔍 در حال بررسیِ نوعِ ضبط…",
@@ -156,6 +171,7 @@ PENDING_REPORT: dict[int, str] = {}
 ACTIVE_TASKS: dict[int, asyncio.Task] = {}
 ACTIVE_STOP: dict[int, asyncio.Event] = {}
 LAST_USED: dict[int, float] = {}
+LAST_JOB: dict[int, tuple] = {}
 SLIDES_SEM = asyncio.Semaphore(config.MAX_CONCURRENT)
 VIDEO_SEM = asyncio.Semaphore(config.MAX_VIDEO_CONCURRENT)
 
@@ -393,6 +409,23 @@ async def job_cancel(cb: CallbackQuery):
     else:
         await cb.answer("عملیاتی برای لغو وجود ندارد.")
 
+@dp.callback_query(F.data == "job_retry")
+async def job_retry(cb: CallbackQuery):
+    uid = cb.from_user.id
+    job = LAST_JOB.get(uid)
+    if not job:
+        await cb.answer("درخواستی برای تلاش مجدد نیست؛ لطفاً لینک را دوباره بفرستید.", show_alert=True)
+        return
+    if uid in ACTIVE_USERS:
+        await cb.answer("یک کارِ شما در حال انجام است؛ کمی صبر کنید.")
+        return
+    m, rec, mode, ftype = job
+    USER_FILETYPE[uid] = ftype
+    LAST_USED[uid] = time.time()
+    await cb.answer("در حال تلاش مجدد…")
+    ACTIVE_USERS.add(uid)
+    ACTIVE_TASKS[uid] = asyncio.create_task(_run_job(m, rec, mode))
+
 @dp.callback_query(F.data == "menu:main")
 async def back_main(cb: CallbackQuery):
     await _show(cb, "منوی اصلی — لطفاً یک گزینه را انتخاب کنید:", MENU)
@@ -501,8 +534,12 @@ async def _run_job(m, rec, mode):
     except Exception as e:
         log.error("job failed [rec=%s mode=%s uid=%s]\n%s",
                   rec.rec_id, mode, uid, traceback.format_exc())
+        markup = None
+        if _is_transient(e):
+            LAST_JOB[uid] = (m, rec, mode, USER_FILETYPE.get(uid, "all"))
+            markup = RETRY_KB
         try:
-            await m.answer(_friendly_error(e))
+            await m.answer(_friendly_error(e), reply_markup=markup)
         except Exception:
             pass
     finally:
@@ -512,6 +549,7 @@ async def _run_job(m, rec, mode):
         ACTIVE_STOP.pop(uid, None)
         if ok:
             USER_MODE.pop(uid, None)
+            LAST_JOB.pop(uid, None)
 
 async def do_files(m, rec, ftype):
     uid = m.from_user.id

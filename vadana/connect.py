@@ -57,11 +57,12 @@ class ConnectClient:
     _RETRY = (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
               requests.exceptions.ChunkedEncodingError, urllib3.exceptions.ProtocolError)
 
-    def download_package_bytes(self, rec_id: str, progress=None, attempts: int = 2) -> bytes:
+    def download_package_bytes(self, rec_id: str, progress=None, attempts: int = 3) -> bytes:
         """The offline recording ZIP: /<id>/output/<id>.zip?download=zip
 
         progress(downloaded_bytes, total_bytes) is called while streaming.
-        Retries once on a dropped connection (the Iran backhaul blips sometimes)."""
+        Retries up to `attempts` times on a dropped connection (the Iran backhaul
+        blips), backing off a little longer each time."""
         path = f"/{rec_id}/output/{rec_id}.zip?download=zip"
         for i in range(attempts):
             try:
@@ -85,7 +86,7 @@ class ConnectClient:
             except self._RETRY:
                 if i + 1 >= attempts:
                     raise
-                time.sleep(2)
+                time.sleep(2 * (i + 1))
 
     def open_package(self, rec_id: str, progress=None) -> zipfile.ZipFile:
         return zipfile.ZipFile(io.BytesIO(self.download_package_bytes(rec_id, progress)))

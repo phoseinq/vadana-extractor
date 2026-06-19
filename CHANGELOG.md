@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.1.0
++ The download now retries up to **3 times** on a dropped connection (backing off a little longer each time), instead of once
++ If it still fails after that, the error comes with a **🔄 retry button** — wait a moment, tap it, and the same job runs again without re-pasting the link
+
 ## v2.0.1
 + Retry the recording download once when the connection drops mid-transfer (the Iran link blips now and then) — fewer spurious "try again" errors
 
