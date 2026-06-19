@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import time
 import zipfile
 from dataclasses import dataclass
 from urllib.parse import urlparse, parse_qs
@@ -53,27 +54,38 @@ class ConnectClient:
     def get(self, path: str, timeout: int = 180, **kw) -> requests.Response:
         return self.session.get(self._full(path), timeout=timeout, **kw)
 
-    def download_package_bytes(self, rec_id: str, progress=None) -> bytes:
+    _RETRY = (requests.exceptions.ConnectionError, requests.exceptions.Timeout,
+              requests.exceptions.ChunkedEncodingError, urllib3.exceptions.ProtocolError)
+
+    def download_package_bytes(self, rec_id: str, progress=None, attempts: int = 2) -> bytes:
         """The offline recording ZIP: /<id>/output/<id>.zip?download=zip
 
-        progress(downloaded_bytes, total_bytes) is called while streaming."""
-        r = self.get(f"/{rec_id}/output/{rec_id}.zip?download=zip", timeout=600, stream=True)
-        if r.status_code != 200:
-            raise RuntimeError(f"could not download package (HTTP {r.status_code}). Session expired?")
-        total = int(r.headers.get("content-length", 0))
-        buf = io.BytesIO()
-        got = 0
-        for chunk in r.iter_content(65536):
-            if not chunk:
-                continue
-            buf.write(chunk)
-            got += len(chunk)
-            if progress:
-                progress(got, total)
-        data = buf.getvalue()
-        if data[:2] != b"PK":
-            raise RuntimeError("not a package (session expired or login page returned).")
-        return data
+        progress(downloaded_bytes, total_bytes) is called while streaming.
+        Retries once on a dropped connection (the Iran backhaul blips sometimes)."""
+        path = f"/{rec_id}/output/{rec_id}.zip?download=zip"
+        for i in range(attempts):
+            try:
+                r = self.get(path, timeout=600, stream=True)
+                if r.status_code != 200:
+                    raise RuntimeError(f"could not download package (HTTP {r.status_code}). Session expired?")
+                total = int(r.headers.get("content-length", 0))
+                buf = io.BytesIO()
+                got = 0
+                for chunk in r.iter_content(65536):
+                    if not chunk:
+                        continue
+                    buf.write(chunk)
+                    got += len(chunk)
+                    if progress:
+                        progress(got, total)
+                data = buf.getvalue()
+                if data[:2] != b"PK":
+                    raise RuntimeError("not a package (session expired or login page returned).")
+                return data
+            except self._RETRY:
+                if i + 1 >= attempts:
+                    raise
+                time.sleep(2)
 
     def open_package(self, rec_id: str, progress=None) -> zipfile.ZipFile:
         return zipfile.ZipFile(io.BytesIO(self.download_package_bytes(rec_id, progress)))

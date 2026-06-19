@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.0.1
++ Retry the recording download once when the connection drops mid-transfer (the Iran link blips now and then) — fewer spurious "try again" errors
+
 ## v2.0.0
 + Works with every IAU branch host, not just `vadavc30` — `vadavc30`, `vadana14` (Zanjan), `vadana36`, and the rest. Links from other branches no longer get ignored.
 + The session is now optional — recordings that open directly (most older terms) download without a `?session=`; you're only asked to log in when one actually needs it
