@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.1
++ Annotated-PDF video: the PDF page now switches at the midpoint of a long talk-gap instead of waiting for the next stroke, so the page tracks the audio more closely (the package records strokes, not page flips, so this is a best-effort estimate)
+
 ## v2.2.0
 + **Annotated PDFs**: when the professor draws on a shared PDF, the whiteboard PDF and the video now show the PDF page behind the strokes (matched 1:1 by page count) instead of the annotations floating on a blank white page
 

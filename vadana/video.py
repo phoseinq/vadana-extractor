@@ -12,6 +12,8 @@ from .whiteboard import Whiteboard, NATIVE_W, NATIVE_H
 def _blank(scale):
     return Image.new("RGB", (NATIVE_W * scale, NATIVE_H * scale), "white")
 
+PAGE_FLIP_GAP_MS = 4000
+
 def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
                  max_fps: float = 4.0, progress=None, backgrounds=None) -> list[tuple[float, str]]:
     """Render timed frames. Returns [(start_seconds, png_path), ...] in order.
@@ -56,15 +58,21 @@ def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
 
     last_emit = -1e9
     current_page = None
+    prev_page, prev_t = None, None
     total_ev = len(wb.events) or 1
     for ev_i, (t, page, sid, shape) in enumerate(wb.events, 1):
         ensure(page)
+        if backgrounds and prev_page is not None and page != prev_page and t - prev_t > PAGE_FLIP_GAP_MS:
+            mid = (prev_t + t) / 2
+            emit(mid, page)
+            last_emit = mid
         if shape is None:
             page_shapes[page].pop(sid, None)
             repaint(page)
         else:
             page_shapes[page][sid] = shape
             wb_mod.draw_shape(page_draw[page], shape, scale, W, H)
+        prev_page, prev_t = page, t
         current_page = page
         if t - last_emit >= interval:
             emit(t, page)
