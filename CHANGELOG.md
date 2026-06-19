@@ -1,5 +1,9 @@
 # Changelog
 
+## v2.1.1
++ The "approximate time remaining" now only counts down — it never creeps up when progress plateaus, and switches to "finishing up" once it runs past the estimate
++ Raised the video time estimate to ~15 min (the whiteboard smoothing made renders heavier)
+
 ## v2.1.0
 + The download now retries up to **3 times** on a dropped connection (backing off a little longer each time), instead of once
 + If it still fails after that, the error comes with a **🔄 retry button** — wait a moment, tap it, and the same job runs again without re-pasting the link

@@ -250,7 +250,7 @@ def _video_thumb(mp4_path, out_jpg):
     except Exception:
         return None
 
-VIDEO_ETA_SEC = 570
+VIDEO_ETA_SEC = 900
 
 class _Prog:
     def __init__(self):
@@ -261,28 +261,23 @@ class _Prog:
         self.label, self.pct = label, pct
 
 async def _poll(status: Message, prog: _Prog, stop: asyncio.Event):
-    start, i, last, eta = time.time(), 0, "", None
+    start, i, last = time.time(), 0, ""
+    shown, last_el = None, 0.0
     while not stop.is_set():
         i += 1
         el = time.time() - start
+        dt, last_el = el - last_el, el
         pct = prog.pct
         if pct >= 97:
             tail = "در حال اتمام…"
-        else:
-            rem = None
-            if el >= 10 and pct >= 15:
-                raw = el * (100 - pct) / pct
-                if eta is None:
-                    eta = raw
-                elif raw < eta:
-                    eta = 0.5 * eta + 0.5 * raw
-                else:
-                    eta = 0.92 * eta + 0.08 * raw
-                rem = eta
+        elif el >= 10 and pct >= 15:
+            rem = el * (100 - pct) / pct
             if prog.min_total:
-                rem = max(rem or 0, prog.min_total - el)
-            tail = (f"تقریباً {_fmt(rem)} باقی‌مانده" if rem and rem >= 1
-                    else "در حال آماده‌سازی…")
+                rem = max(rem, prog.min_total - el)
+            shown = rem if shown is None else max(0.0, min(shown - dt, rem))
+            tail = f"تقریباً {_fmt(shown)} باقی‌مانده" if shown >= 1 else "در حال اتمام…"
+        else:
+            tail = "در حال آماده‌سازی…"
         txt = (f"{prog.label}\n{_bar(pct)}\n"
                f"⏱ {_fmt(el)} سپری‌شده · {tail} {SPIN[i % len(SPIN)]}")
         if txt != last:
