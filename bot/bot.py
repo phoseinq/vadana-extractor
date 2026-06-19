@@ -26,7 +26,7 @@ from aiogram.types import (
 )
 
 from bot import config
-from vadana.connect import parse_recording_url, ConnectClient
+from vadana.connect import parse_recording_url, ConnectClient, Recording
 from vadana.slides import download_slides, category_of
 from vadana import audio as audio_mod
 from vadana import video as video_mod
@@ -52,7 +52,7 @@ def _store_load():
             data = json.load(f)
     except Exception:
         data = {}
-    for k in ("video", "wb", "files", "video_day", "stats", "meta"):
+    for k in ("video", "wb", "files", "video_day", "stats", "meta", "retry"):
         data.setdefault(k, {})
     return data
 
@@ -171,7 +171,6 @@ PENDING_REPORT: dict[int, str] = {}
 ACTIVE_TASKS: dict[int, asyncio.Task] = {}
 ACTIVE_STOP: dict[int, asyncio.Event] = {}
 LAST_USED: dict[int, float] = {}
-LAST_JOB: dict[int, tuple] = {}
 SLIDES_SEM = asyncio.Semaphore(config.MAX_CONCURRENT)
 VIDEO_SEM = asyncio.Semaphore(config.MAX_VIDEO_CONCURRENT)
 
@@ -230,6 +229,18 @@ def _meta_put(rec_id, **kw):
     m.update(kw)
     STORE["meta"][rec_id] = m
     _store_save()
+
+def _retry_put(uid, chat_id, rec, mode, ftype):
+    """Remember a failed job so the 🔄 button can re-run it — persisted, so it
+    survives a bot restart (the user can still retry after one)."""
+    STORE.setdefault("retry", {})[str(uid)] = {
+        "chat": chat_id, "host": rec.host, "rec_id": rec.rec_id,
+        "token": rec.token, "mode": mode, "ftype": ftype}
+    _store_save()
+
+def _retry_pop(uid):
+    if STORE.get("retry", {}).pop(str(uid), None) is not None:
+        _store_save()
 
 def _caption(title, rec_id, *, with_size=True, with_dur=False) -> str:
     meta = STORE.get("meta", {}).get(rec_id, {})
@@ -407,19 +418,19 @@ async def job_cancel(cb: CallbackQuery):
 @dp.callback_query(F.data == "job_retry")
 async def job_retry(cb: CallbackQuery):
     uid = cb.from_user.id
-    job = LAST_JOB.get(uid)
+    job = STORE.get("retry", {}).get(str(uid))
     if not job:
         await cb.answer("درخواستی برای تلاش مجدد نیست؛ لطفاً لینک را دوباره بفرستید.", show_alert=True)
         return
     if uid in ACTIVE_USERS:
         await cb.answer("یک کارِ شما در حال انجام است؛ کمی صبر کنید.")
         return
-    m, rec, mode, ftype = job
-    USER_FILETYPE[uid] = ftype
+    rec = Recording(host=job["host"], rec_id=job["rec_id"], token=job.get("token", ""))
+    USER_FILETYPE[uid] = job.get("ftype", "all")
     LAST_USED[uid] = time.time()
     await cb.answer("در حال تلاش مجدد…")
     ACTIVE_USERS.add(uid)
-    ACTIVE_TASKS[uid] = asyncio.create_task(_run_job(m, rec, mode))
+    ACTIVE_TASKS[uid] = asyncio.create_task(_run_job(cb.message, rec, job["mode"], uid))
 
 @dp.callback_query(F.data == "menu:main")
 async def back_main(cb: CallbackQuery):
@@ -510,19 +521,18 @@ async def handle_link(m: Message):
         mode = "slides"
     LAST_USED[uid] = time.time()
     ACTIVE_USERS.add(uid)
-    ACTIVE_TASKS[uid] = asyncio.create_task(_run_job(m, rec, mode))
+    ACTIVE_TASKS[uid] = asyncio.create_task(_run_job(m, rec, mode, uid))
 
-async def _run_job(m, rec, mode):
-    uid = m.from_user.id
+async def _run_job(m, rec, mode, uid):
     ok = False
     log.info("job start: uid=%s mode=%s rec=%s", uid, mode, rec.rec_id)
     try:
         if mode == "video":
-            await do_video(m, rec)
+            await do_video(m, rec, uid)
         elif mode == "wb":
-            await do_whiteboard(m, rec)
+            await do_whiteboard(m, rec, uid)
         else:
-            await do_files(m, rec, USER_FILETYPE.get(uid, "all"))
+            await do_files(m, rec, USER_FILETYPE.get(uid, "all"), uid)
         ok = True
     except asyncio.CancelledError:
         pass
@@ -531,7 +541,7 @@ async def _run_job(m, rec, mode):
                   rec.rec_id, mode, uid, traceback.format_exc())
         markup = None
         if _is_transient(e):
-            LAST_JOB[uid] = (m, rec, mode, USER_FILETYPE.get(uid, "all"))
+            _retry_put(uid, m.chat.id, rec, mode, USER_FILETYPE.get(uid, "all"))
             markup = RETRY_KB
         try:
             await m.answer(_friendly_error(e), reply_markup=markup)
@@ -544,10 +554,9 @@ async def _run_job(m, rec, mode):
         ACTIVE_STOP.pop(uid, None)
         if ok:
             USER_MODE.pop(uid, None)
-            LAST_JOB.pop(uid, None)
+            _retry_pop(uid)
 
-async def do_files(m, rec, ftype):
-    uid = m.from_user.id
+async def do_files(m, rec, ftype, uid):
     status = await m.reply("🔎 در حال بررسی…")
     manifest = _store_get("files", rec.rec_id)
 
@@ -603,8 +612,7 @@ async def do_files(m, rec, ftype):
     await status.edit_text(f"✅ {sent} فایل ارسال شد.\nبرای ضبطِ بعدی /start را بزنید.",
                            reply_markup=_report_kb(rec.rec_id))
 
-async def do_whiteboard(m, rec):
-    uid = m.from_user.id
+async def do_whiteboard(m, rec, uid):
     status = await m.reply("🔎 در حال بررسی…")
 
     fid = _store_get("wb", rec.rec_id)
@@ -656,8 +664,7 @@ async def do_whiteboard(m, rec):
             await poller
         shutil.rmtree(work, ignore_errors=True)
 
-async def do_video(m, rec):
-    uid = m.from_user.id
+async def do_video(m, rec, uid):
     status = await m.reply("🔎 در حال بررسی…")
 
     fid = _store_get("video", rec.rec_id)

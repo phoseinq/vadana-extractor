@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.1.2
++ The 🔄 retry button now survives a bot restart — the failed job is remembered on disk, so you can still tap retry after the bot updates instead of re-sending the link
+
 ## v2.1.1
 + The "approximate time remaining" now only counts down — it never creeps up when progress plateaus, and switches to "finishing up" once it runs past the estimate
 + Raised the video time estimate to ~15 min (the whiteboard smoothing made renders heavier)
