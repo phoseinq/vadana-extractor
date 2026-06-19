@@ -19,8 +19,6 @@ def load_package(args):
         rec_id = os.path.splitext(os.path.basename(args.package))[0]
         return zipfile.ZipFile(args.package), rec_id
     rec = parse_recording_url(args.url)
-    if not rec.token:
-        sys.exit("[!] link has no ?session= — paste the live recording URL.")
     print(f"[*] downloading package {rec.rec_id} ...")
     proxy = os.environ.get("IRAN_PROXY") or None
     return ConnectClient(rec.host, rec.token, proxy=proxy).open_package(rec.rec_id), rec.rec_id

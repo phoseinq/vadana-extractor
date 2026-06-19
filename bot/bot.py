@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import subprocess
 import sys
 import time
 import traceback
@@ -27,6 +28,7 @@ from aiogram.types import (
 from bot import config
 from vadana.connect import parse_recording_url, ConnectClient
 from vadana.slides import download_slides, category_of
+from vadana import audio as audio_mod
 from vadana import video as video_mod
 from vadana import whiteboard as wb_mod
 
@@ -50,7 +52,7 @@ def _store_load():
             data = json.load(f)
     except Exception:
         data = {}
-    for k in ("video", "wb", "files", "video_day", "stats"):
+    for k in ("video", "wb", "files", "video_day", "stats", "meta"):
         data.setdefault(k, {})
     return data
 
@@ -70,7 +72,7 @@ def _store_put(kind, rec_id, val):
     STORE.setdefault(kind, {})[rec_id] = val
     _store_save()
 
-LINK_RE = re.compile(r"https?://\S+session=\S+")
+LINK_RE = re.compile(r"https?://[\w.-]+\.ec\.iau\.ir/\S*")
 
 WELCOME = (
     "سلام 👋 به رباتِ آرشیوِ کلاس‌های وادانا خوش آمدید.\n\n"
@@ -120,10 +122,12 @@ FRESH = ("در صورتِ تکرارِ مشکل، احتمالاً لینک من
 def _friendly_error(exc: Exception) -> str:
     """Map a job exception to a clear Persian message (session / timeout / disk / corrupt)."""
     s = str(exc).lower()
-    if isinstance(exc, zipfile.BadZipFile) or "not a package" in s:
-        return "❌ پکیجِ ضبط ناقص یا خراب دریافت شد. لطفاً چند لحظه بعد دوباره تلاش کنید."
-    if "session" in s or "expired" in s or "401" in s or "403" in s:
-        return f"❌ سشن یا لینکِ شما منقضی شده است.\n{FRESH}"
+    if "not a package" in s or "login" in s or "session" in s or "expired" in s or "401" in s or "403" in s:
+        return ("❌ این کلاس برای دانلود به ورود نیاز دارد (یا سشنِ لینک منقضی شده).\n"
+                "لطفاً داخلِ آرشیو وارد شوید، روی همان کلاس بزنید و لینکِ کاملِ بالای مرورگر "
+                "(همراه با ‎session=‎) را کپی و ارسال کنید.")
+    if isinstance(exc, zipfile.BadZipFile):
+        return "❌ فایلِ ضبط ناقص دریافت شد. لطفاً چند لحظه بعد دوباره تلاش کنید."
     if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
         return "❌ فضای دیسکِ سرور موقتاً پر است؛ لطفاً کمی بعد دوباره تلاش کنید."
     if "timed out" in s or "timeout" in s or "connection" in s or "proxy" in s:
@@ -172,6 +176,63 @@ def _stat(uid, key):
     d = STORE["stats"].setdefault(str(uid), {"files": 0, "wb": 0, "videos": 0})
     d[key] = d.get(key, 0) + 1
     _store_save()
+
+def _jalali(gy, gm, gd):
+    """Gregorian -> Jalali (Solar Hijri). Pure, no dependency."""
+    gdm = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    g_y2 = gy - 1600
+    days = 365 * g_y2 + (g_y2 + 3) // 4 - (g_y2 + 99) // 100 + (g_y2 + 399) // 400
+    days += sum(gdm[:gm - 1]) + gd - 1
+    if gm > 2 and ((gy % 4 == 0 and gy % 100 != 0) or gy % 400 == 0):
+        days += 1
+    days -= 79
+    j_np = days // 12053
+    days %= 12053
+    jy = 979 + 33 * j_np + 4 * (days // 1461)
+    days %= 1461
+    if days >= 366:
+        jy += (days - 1) // 365
+        days = (days - 1) % 365
+    if days < 186:
+        jm, jd = 1 + days // 31, 1 + days % 31
+    else:
+        jm, jd = 7 + (days - 186) // 30, 1 + (days - 186) % 30
+    return jy, jm, jd
+
+def _today_fa() -> str:
+    t = date.today()
+    jy, jm, jd = _jalali(t.year, t.month, t.day)
+    return f"{jy}/{jm:02d}/{jd:02d}"
+
+def _hms_fa(sec) -> str:
+    sec = int(sec or 0)
+    h, mnt = sec // 3600, (sec % 3600) // 60
+    return f"{h} ساعت و {mnt} دقیقه" if h else f"{mnt} دقیقه"
+
+def _meta_put(rec_id, **kw):
+    m = STORE.setdefault("meta", {}).get(rec_id, {})
+    m.update(kw)
+    STORE["meta"][rec_id] = m
+    _store_save()
+
+def _caption(title, rec_id, *, with_size=True, with_dur=False) -> str:
+    meta = STORE.get("meta", {}).get(rec_id, {})
+    lines = [title, f"🆔 {rec_id}", f"📅 تاریخِ ساخت: {meta.get('date') or _today_fa()}"]
+    if with_size and meta.get("size"):
+        lines.append(f"📦 حجم: {meta['size'] / 1024 / 1024:.1f} مگابایت")
+    if with_dur and meta.get("dur"):
+        lines.append(f"⏱ مدتِ کلاس: {_hms_fa(meta['dur'])}")
+    return "\n".join(lines)
+
+def _video_thumb(mp4_path, out_jpg):
+    """First frame of the video as a Telegram thumbnail (<=320px). None on failure."""
+    try:
+        subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", mp4_path,
+                        "-vf", "scale=320:-1", "-frames:v", "1", out_jpg],
+                       check=True, timeout=60)
+        return out_jpg if os.path.exists(out_jpg) else None
+    except Exception:
+        return None
 
 VIDEO_ETA_SEC = 570
 
@@ -252,14 +313,17 @@ async def _send_with_bar(m, status, paths, kind):
             await m.answer(f"⚠️ ارسالِ «{os.path.basename(p)}» ({mb:.0f}MB) ممکن نشد:\n{e}")
     return sent
 
-async def _archive(path):
-    """Upload a local file to the storage channel once; return (file_id, is_video)."""
+async def _archive(path, thumb=None):
+    """Upload a local file to the storage channel once; return (file_id, is_video).
+    The thumbnail (first page/frame) is baked in here, so it rides along with the
+    file_id on every later re-send — no need to re-attach it."""
     name = os.path.basename(path)
+    th = FSInputFile(thumb) if thumb and os.path.exists(thumb) else None
     if os.path.splitext(path)[1].lower() in VIDEO_EXTS:
         msg = await bot.send_video(config.STORAGE_CHANNEL, FSInputFile(path),
-                                   caption=name, supports_streaming=True)
+                                   caption=name, supports_streaming=True, thumbnail=th)
         return msg.video.file_id, True
-    msg = await bot.send_document(config.STORAGE_CHANNEL, FSInputFile(path), caption=name)
+    msg = await bot.send_document(config.STORAGE_CHANNEL, FSInputFile(path), caption=name, thumbnail=th)
     return msg.document.file_id, False
 
 async def _send_fid(m, fid, is_video, caption, markup=None) -> bool:
@@ -410,12 +474,8 @@ async def handle_link(m: Message):
         await m.reply(f"⏳ لطفاً کمی صبر کنید؛ {int(wait)+1} ثانیهٔ دیگر دوباره ارسال کنید.")
         return
     rec = parse_recording_url(LINK_RE.search(m.text).group(0))
-    if "vadavc30.ec.iau.ir" not in (rec.host or "") or not re.fullmatch(r"[a-z0-9]+", rec.rec_id or ""):
-        await m.reply("❌ فقط لینکِ معتبرِ آرشیوِ وادانا (vadavc30.ec.iau.ir) پذیرفته می‌شود.")
-        return
-    if not rec.token:
-        await m.reply("⚠️ این لینک کامل نیست. لطفاً وارد آرشیو شوید، روی کلاس بزنید و "
-                      "لینکِ بالای مرورگر را به‌طور کامل کپی کنید.")
+    if not re.search(r"\.ec\.iau\.ir(?::\d+)?$", rec.host or "") or not re.fullmatch(r"[a-z0-9]+", rec.rec_id or ""):
+        await m.reply("❌ فقط لینکِ معتبرِ آرشیوِ وادانا (آدرسِ ‎ec.iau.ir‎) پذیرفته می‌شود.")
         return
     mode = USER_MODE[uid]
     if mode == "video" and not (config.ALLOW_VIDEO or uid in config.ADMINS):
@@ -488,6 +548,7 @@ async def do_files(m, rec, ftype):
                 fid, isv = await _archive(p)
                 manifest.append({"name": os.path.basename(p), "cat": category_of(p), "fid": fid, "v": isv})
             _store_put("files", rec.rec_id, manifest)
+            _meta_put(rec.rec_id, date=_today_fa())
         finally:
             stop.set()
             if not poller.done():
@@ -501,7 +562,9 @@ async def do_files(m, rec, ftype):
                                "می‌توانید نوعِ دیگری انتخاب کنید یا /start را بزنید.")
         return
     await status.edit_text(f"📤 در حال ارسال… ({len(items)} فایل)")
-    sent = sum([await _send_fid(m, it["fid"], it.get("v", False), it["name"]) for it in items])
+    sent = sum([await _send_fid(m, it["fid"], it.get("v", False),
+                                _caption(it["name"], rec.rec_id, with_size=False))
+                for it in items])
     for _ in range(sent):
         _stat(uid, "files")
     await status.edit_text(f"✅ {sent} فایل ارسال شد.\nبرای ضبطِ بعدی /start را بزنید.",
@@ -514,7 +577,8 @@ async def do_whiteboard(m, rec):
     fid = _store_get("wb", rec.rec_id)
     if fid:
         await status.edit_text("📤 در حال ارسال… (از آرشیو)")
-        if await _send_fid(m, fid, False, f"وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id)):
+        if await _send_fid(m, fid, False, _caption("📝 وایت‌بردِ کلاس", rec.rec_id),
+                           markup=_report_kb(rec.rec_id)):
             _stat(uid, "wb")
             await status.edit_text("✅ فایلِ PDFِ وایت‌برد ارسال شد. (/start)")
             return
@@ -529,6 +593,7 @@ async def do_whiteboard(m, rec):
     poller = asyncio.create_task(_poll(status, prog, stop))
     work = os.path.join(config.WORK_DIR, f"{rec.rec_id}_wb")
     tmp = os.path.join(work, "wb.pdf")
+    thumb = os.path.join(work, "thumb.jpg")
     try:
         async with SLIDES_SEM:
             shutil.rmtree(work, ignore_errors=True)
@@ -538,16 +603,18 @@ async def do_whiteboard(m, rec):
             zf = await asyncio.to_thread(client.open_package, rec.rec_id,
                                          lambda g, t: prog.set(L_FETCH, (g / t * 72) if t else 35))
             prog.set(L_WB_RENDER, 80)
-            result = await asyncio.to_thread(wb_mod.make_pdf, zf, tmp)
+            result = await asyncio.to_thread(wb_mod.make_pdf, zf, tmp, 2, thumb)
         stop.set(); await poller
         if result is None:
             await status.edit_text("ℹ️ این ضبط، وایت‌برد نداشت.\n"
                                    "احتمالاً اسلاید بوده است — لطفاً «📂 دانلود فایل‌ها» را انتخاب کنید. (/start)")
             return
         await status.edit_text("📤 در حال ذخیره و ارسال…")
-        fid, _ = await _archive(tmp)
+        _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp))
+        fid, _ = await _archive(tmp, thumb)
         _store_put("wb", rec.rec_id, fid)
-        await _send_fid(m, fid, False, f"وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id))
+        await _send_fid(m, fid, False, _caption("📝 وایت‌بردِ کلاس", rec.rec_id),
+                        markup=_report_kb(rec.rec_id))
         _stat(uid, "wb")
         await status.edit_text("✅ فایلِ PDFِ وایت‌برد ارسال شد. (/start)")
     finally:
@@ -563,7 +630,8 @@ async def do_video(m, rec):
     fid = _store_get("video", rec.rec_id)
     if fid:
         await status.edit_text("📤 در حال ارسال… (از آرشیو)")
-        if await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id)):
+        if await _send_fid(m, fid, True, _caption("🎬 ویدیوی آرشیوِ کلاس", rec.rec_id, with_dur=True),
+                           markup=_report_kb(rec.rec_id)):
             await status.edit_text("✅ ویدیو ارسال شد. (/start)")
             return
         STORE["video"].pop(rec.rec_id, None)
@@ -584,6 +652,7 @@ async def do_video(m, rec):
     poller = asyncio.create_task(_poll(status, prog, stop))
     work = os.path.join(config.WORK_DIR, f"{rec.rec_id}_video")
     tmp_out = os.path.join(work, "out.mp4")
+    thumb = os.path.join(work, "thumb.jpg")
     try:
         async with VIDEO_SEM:
             shutil.rmtree(work, ignore_errors=True)
@@ -605,11 +674,15 @@ async def do_video(m, rec):
                                                  lambda s, p: prog.set(STAGE_MEDIA.get(s, s), 52 + p * 0.45))
         stop.set(); await poller
         await status.edit_text("📤 در حال ذخیره و ارسال…")
-        fid, _ = await _archive(tmp_out)
+        dur = await asyncio.to_thread(audio_mod.duration_seconds, tmp_out)
+        _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp_out), dur=dur)
+        th = await asyncio.to_thread(_video_thumb, tmp_out, thumb)
+        fid, _ = await _archive(tmp_out, th)
         _store_put("video", rec.rec_id, fid)
         if uid not in config.ADMINS:
             _video_inc(uid)
-        await _send_fid(m, fid, True, f"آرشیو وایت‌برد — {rec.rec_id}", markup=_report_kb(rec.rec_id))
+        await _send_fid(m, fid, True, _caption("🎬 ویدیوی آرشیوِ کلاس", rec.rec_id, with_dur=True),
+                        markup=_report_kb(rec.rec_id))
         _stat(uid, "videos")
         quota = ("بدونِ محدودیت (ادمین)" if uid in config.ADMINS else
                  f"سهمیهٔ امروز: {config.MAX_VIDEO_PER_DAY - _video_used_today(uid)} از {config.MAX_VIDEO_PER_DAY}")

@@ -33,10 +33,9 @@ class ExtractRequest(BaseModel):
 
 def _client(url: str) -> tuple[ConnectClient, str]:
     rec = parse_recording_url(url)
-    if "vadavc30.ec.iau.ir" not in (rec.host or "") or not re.fullmatch(r"[a-z0-9]+", rec.rec_id or ""):
+    # accept any IAU branch host (vadavc30, vadana14, …) under ec.iau.ir; session optional
+    if not re.search(r"\.ec\.iau\.ir(?::\d+)?$", rec.host or "") or not re.fullmatch(r"[a-z0-9]+", rec.rec_id or ""):
         raise HTTPException(400, "not a valid Vadana recording url")
-    if not rec.token:
-        raise HTTPException(400, "url is missing its ?session= token")
     proxy = os.environ.get("IRAN_PROXY") or None
     return ConnectClient(rec.host, rec.token, proxy=proxy), rec.rec_id
 

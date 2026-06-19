@@ -36,6 +36,15 @@ def test_whiteboard_delete_removes_shape():
     assert doc.pages == []
 
 
+def test_smooth_densifies_and_keeps_endpoints():
+    pts = [(0, 0), (10, 5), (20, 0), (30, 5)]
+    out = wb._smooth(pts, steps=6)
+    assert out[0] == pts[0]            # first endpoint stays put
+    assert out[-1] == pts[-1]          # last endpoint stays put
+    assert len(out) > len(pts)         # spline inserts intermediate samples
+    assert wb._smooth([(1, 1), (2, 2)]) == [(1, 1), (2, 2)]   # <3 pts: untouched
+
+
 def test_whiteboard_render_size(ftcontent_xml):
     doc = wb.parse(ftcontent_xml)
     im = wb.render_page(list(doc.final[0].values()), scale=2)

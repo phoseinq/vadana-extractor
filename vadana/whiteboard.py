@@ -134,6 +134,24 @@ def _clamp(v: float, hi: int, scale: int):
         return None
     return int(max(0, min(hi, v * scale)))
 
+def _smooth(pts, steps: int = 6):
+    """Catmull-Rom spline through pts -> a denser, smoother polyline so sparse
+    handwriting samples read as curves instead of straight angular segments."""
+    if len(pts) < 3:
+        return pts
+    out = [pts[0]]
+    for i in range(len(pts) - 1):
+        p0 = pts[i - 1] if i else pts[0]
+        p1, p2 = pts[i], pts[i + 1]
+        p3 = pts[i + 2] if i + 2 < len(pts) else pts[-1]
+        for j in range(1, steps + 1):
+            t = j / steps
+            t2, t3 = t * t, t * t * t
+            x = 0.5 * (2*p1[0] + (p2[0]-p0[0])*t + (2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2 + (3*p1[0]-p0[0]-3*p2[0]+p3[0])*t3)
+            y = 0.5 * (2*p1[1] + (p2[1]-p0[1])*t + (2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2 + (3*p1[1]-p0[1]-3*p2[1]+p3[1])*t3)
+            out.append((round(x), round(y)))
+    return out
+
 def draw_shape(dr: ImageDraw.ImageDraw, s: Shape, scale: int, W: int, H: int) -> None:
     """Draw a single shape onto an existing canvas (used by both still and video)."""
     if s.kind == "pencil" and s.pts:
@@ -150,9 +168,8 @@ def draw_shape(dr: ImageDraw.ImageDraw, s: Shape, scale: int, W: int, H: int) ->
             x, y = pts[0]
             dr.ellipse([x - r, y - r, x + r, y + r], fill=s.color)
         else:
-            for a, b in zip(pts, pts[1:]):
-                dr.line([a, b], fill=s.color, width=w)
-            for x, y in pts:
+            dr.line(_smooth(pts), fill=s.color, width=w, joint="curve")
+            for x, y in (pts[0], pts[-1]):
                 dr.ellipse([x - r, y - r, x + r, y + r], fill=s.color)
     elif s.kind == "text":
         x0, y0 = _clamp(s.x, W, scale), _clamp(s.y, H, scale)
@@ -215,10 +232,18 @@ def load_from_package(zf: zipfile.ZipFile) -> Whiteboard:
     merged_events.sort(key=lambda e: e[0])
     return Whiteboard(final=merged_final, events=merged_events)
 
-def make_pdf(zf: zipfile.ZipFile, out_path: str, scale: int = 2) -> str | None:
-    """Render the whiteboard's final pages to a PDF. None if no whiteboard content."""
+def make_pdf(zf: zipfile.ZipFile, out_path: str, scale: int = 2,
+             thumb_path: str | None = None) -> str | None:
+    """Render the whiteboard's final pages to a PDF. None if no whiteboard content.
+    If thumb_path is given, the first page is also written there as a small JPEG
+    (Telegram thumbnail: <=320px)."""
     wb = load_from_package(zf)
     if not wb.pages:
         return None
-    save_pdf(render_final_pages(wb, scale), out_path)
+    imgs = render_final_pages(wb, scale)
+    save_pdf(imgs, out_path)
+    if thumb_path and imgs:
+        th = imgs[0].convert("RGB")
+        th.thumbnail((320, 320))
+        th.save(thumb_path, "JPEG", quality=80)
     return out_path
