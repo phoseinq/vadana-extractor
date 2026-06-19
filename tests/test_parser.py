@@ -1,7 +1,28 @@
 import requests
 
-from vadana.connect import parse_recording_url, ConnectClient
+from vadana.connect import parse_recording_url, ConnectClient, is_valid_recording
 from vadana.slides import find_shared_files, category_of, _safe_name
+
+
+def test_is_valid_recording_filters_inputs():
+    ok = "https://vadavc30.ec.iau.ir/abc123/?session=tok9"
+    assert is_valid_recording(parse_recording_url(ok))
+    assert is_valid_recording(parse_recording_url("https://vadana14.ec.iau.ir/xyz/"))   # session optional
+    bad = [
+        "https://evil.com/abc/?session=x",                         # off-host (SSRF)
+        "https://ec.iau.ir.attacker.com/abc/",                     # suffix trick
+        "https://vadavc30.ec.iau.ir/p/4042/login/index.php",       # rec_id has a dot
+        "https://vadavc30.ec.iau.ir/abc/?session=a%0d%0ab",        # CRLF in the token
+    ]
+    for u in bad:
+        assert not is_valid_recording(parse_recording_url(u)), u
+
+
+def test_find_shared_files_rejects_offhost_base():
+    # a crafted download-url pointing off-host must not be used (token-leak / SSRF)
+    xml = ('<r><downloadUrl><![CDATA[/system/download?download-url=http://evil.com/'
+           '&name=x.pdf]]></downloadUrl></r>')
+    assert find_shared_files(xml) == []
 
 
 def test_parse_full_url():

@@ -1,5 +1,18 @@
 # Changelog
 
+## v2.3.0
+**Security & hardening**
++ One input filter (`is_valid_recording`) on every entry point — bot, API, and both CLIs. The host must be under `ec.iau.ir`, the recording id alphanumeric, and the session token alphanumeric, so a crafted link can't point at another host (SSRF), traverse paths, or smuggle URL/header tricks through the session value.
++ A crafted `downloadUrl` inside a package can no longer redirect the authenticated request off-host — only same-host relative paths are followed, and the session token is never sent to a non-IAU URL.
++ The "report a problem" text is forwarded as plain text (user input is no longer parsed as Markdown) and length-capped.
+
+**Anti-spam**
++ Per-user flood guard: at most ~10 updates per 8s; bursts are dropped before any work runs or any message is sent — protecting the server and keeping the bot under Telegram's send limits. Admins are exempt.
+
+**Cleanup**
++ Orphaned work dirs from a crashed job are cleared on startup (results already live on Telegram by `file_id`).
++ Removed dead code (`make_whiteboard_video`, `_send_with_bar`, unused labels/imports).
+
 ## v2.2.2
 + Annotated-PDF video: the PDF page now follows the recording's **real page-flip timeline** (the `currentPage` events), so it switches exactly when the professor flipped — exact, deterministic sync, replacing the v2.2.1 midpoint estimate
 

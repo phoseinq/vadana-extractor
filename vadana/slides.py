@@ -24,7 +24,7 @@ def find_shared_files(mainstream_xml: str) -> list[tuple[str, str]]:
         q = parse_qs(urlparse(rel).query)
         base = q.get("download-url", [""])[0]
         name = unquote_plus(q.get("name", ["file.pdf"])[0])
-        if base:
+        if base.startswith("/"):
             out.append((base, name))
     return out
 

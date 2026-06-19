@@ -4,7 +4,7 @@ import os
 import sys
 import zipfile
 
-from vadana.connect import parse_recording_url, ConnectClient
+from vadana.connect import parse_recording_url, ConnectClient, is_valid_recording
 from vadana import whiteboard as wb_mod
 from vadana import audio as audio_mod
 from vadana import video as video_mod
@@ -19,6 +19,8 @@ def load_package(args):
         rec_id = os.path.splitext(os.path.basename(args.package))[0]
         return zipfile.ZipFile(args.package), rec_id, None
     rec = parse_recording_url(args.url)
+    if not is_valid_recording(rec):
+        sys.exit("[!] not a valid Vadana recording URL (must be …ec.iau.ir).")
     print(f"[*] downloading package {rec.rec_id} ...")
     proxy = os.environ.get("IRAN_PROXY") or None
     client = ConnectClient(rec.host, rec.token, proxy=proxy)

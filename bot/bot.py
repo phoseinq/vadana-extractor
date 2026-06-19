@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import asyncio
-import glob
 import json
 import logging
 import os
@@ -11,12 +10,13 @@ import sys
 import time
 import traceback
 import zipfile
+from collections import defaultdict, deque
 from datetime import date
 from logging.handlers import RotatingFileHandler
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import Bot, Dispatcher, F, BaseMiddleware
 from aiogram.client.session.aiohttp import AiohttpSession
 from aiogram.client.telegram import TelegramAPIServer
 from aiogram.filters import CommandStart
@@ -26,7 +26,7 @@ from aiogram.types import (
 )
 
 from bot import config
-from vadana.connect import parse_recording_url, ConnectClient, Recording
+from vadana.connect import parse_recording_url, ConnectClient, Recording, is_valid_recording
 from vadana.slides import download_slides, category_of
 from vadana import audio as audio_mod
 from vadana import video as video_mod
@@ -158,7 +158,6 @@ STAGE = {
 }
 STAGE_MEDIA = dict(STAGE, render="🖼 در حال آماده‌سازیِ اسلایدها…")
 L_FETCH = "📥 در حال دریافتِ ضبط از وادانا… (از مسیرِ ایران 🇮🇷)"
-L_FETCH_SLIDES = "📥 در حال دریافتِ اسلایدها از وادانا… (از مسیرِ ایران 🇮🇷)"
 L_WB_RENDER = "📝 در حال آماده‌سازیِ صفحاتِ وایت‌برد…"
 L_PREP = "📄 در حال آماده‌سازیِ فایل‌ها…"
 
@@ -179,6 +178,47 @@ _session = AiohttpSession(api=TelegramAPIServer.from_base(config.LOCAL_API_URL))
     if config.LOCAL_API_URL else None
 bot = Bot(config.BOT_TOKEN, session=_session)
 dp = Dispatcher()
+
+class ThrottleMiddleware(BaseMiddleware):
+    """Per-user flood guard. At most BURST updates per WINDOW seconds; anything over
+    that is dropped before any handler runs — so one user can't pin the server or
+    push the bot past Telegram's send limits (a dropped update sends nothing). The
+    user is told once per window, then ignored until they ease off. Admins exempt."""
+    WINDOW = 8.0
+    BURST = 10
+
+    def __init__(self):
+        self._hits: dict[int, deque] = defaultdict(deque)
+        self._warned: dict[int, float] = {}
+
+    async def __call__(self, handler, event, data):
+        user = getattr(event, "from_user", None)
+        if user and user.id not in config.ADMINS:
+            now = time.monotonic()
+            dq = self._hits[user.id]
+            while dq and now - dq[0] > self.WINDOW:
+                dq.popleft()
+            if len(dq) >= self.BURST:
+                if now - self._warned.get(user.id, 0) > self.WINDOW:
+                    self._warned[user.id] = now
+                    await self._warn(event)
+                return
+            dq.append(now)
+        return await handler(event, data)
+
+    @staticmethod
+    async def _warn(event):
+        try:
+            if isinstance(event, CallbackQuery):
+                await event.answer("⏳ کمی آرام‌تر؛ چند لحظه صبر کنید.")
+            elif isinstance(event, Message):
+                await event.reply("⏳ پیام‌های زیادی پشتِ‌هم فرستادید؛ چند لحظه صبر کنید.")
+        except Exception:
+            pass
+
+_throttle = ThrottleMiddleware()
+dp.message.outer_middleware(_throttle)
+dp.callback_query.outer_middleware(_throttle)
 
 def _fmt(s) -> str:
     s = max(0, int(s))
@@ -328,29 +368,6 @@ def _video_inc(uid):
     STORE["video_day"][str(uid)] = [today, 1] if not d or d[0] != today else [today, d[1] + 1]
     _store_save()
 
-async def _send_with_bar(m, status, paths, kind):
-    n, sent = len(paths), 0
-    for i, p in enumerate(paths, 1):
-        mb = os.path.getsize(p) / 1024 / 1024
-        try:
-            await status.edit_text(f"📤 در حال ارسال… {kind} {i} از {n} ({mb:.0f}MB)\n{_bar(i / n * 100)}")
-        except Exception:
-            pass
-        if mb > config.MAX_UPLOAD_MB:
-            await m.answer(f"⚠️ فایلِ «{os.path.basename(p)}» با حجمِ {mb:.0f}MB از حدِ مجازِ ارسال بزرگ‌تر است.")
-            continue
-        try:
-            name = os.path.basename(p)
-            if os.path.splitext(p)[1].lower() in VIDEO_EXTS:
-                await m.answer_video(FSInputFile(p), caption=name, supports_streaming=True)
-            else:
-                await m.answer_document(FSInputFile(p), caption=name)
-            sent += 1
-        except Exception as e:
-            logging.error("send failed [%s]:\n%s", os.path.basename(p), traceback.format_exc())
-            await m.answer(f"⚠️ ارسالِ «{os.path.basename(p)}» ({mb:.0f}MB) ممکن نشد:\n{e}")
-    return sent
-
 async def _archive(path, thumb=None):
     """Upload a local file to the storage channel once; return (file_id, is_video).
     The thumbnail (first page/frame) is baked in here, so it rides along with the
@@ -497,18 +514,18 @@ async def report_start(cb: CallbackQuery):
 async def handle_report_text(m: Message):
     uid = m.from_user.id
     rec_id = PENDING_REPORT.pop(uid, "?")
-    summary = (m.text or "").strip()
+    summary = (m.text or "").strip()[:1000]
     if not summary or summary == "/skip":
         summary = "— (بدونِ توضیح)"
     u = m.from_user
     who = f"@{u.username}" if u.username else (u.full_name or "—")
     text = (f"#Boy 🛑 گزارشِ مشکل\n"
-            f"👤 {who}  (`{uid}`)\n"
-            f"🎬 ضبط: `{rec_id}`\n"
+            f"👤 {who}  ({uid})\n"
+            f"🎬 ضبط: {rec_id}\n"
             f"────────\n{summary}")
     try:
         if config.STORAGE_CHANNEL:
-            await bot.send_message(config.STORAGE_CHANNEL, text, parse_mode="Markdown")
+            await bot.send_message(config.STORAGE_CHANNEL, text)
     except Exception:
         logging.error("report forward failed:\n%s", traceback.format_exc())
     await m.reply("✅ گزارشِ شما ثبت و برای بررسی ارسال شد.")
@@ -529,7 +546,7 @@ async def handle_link(m: Message):
         await m.reply(f"⏳ لطفاً کمی صبر کنید؛ {int(wait)+1} ثانیهٔ دیگر دوباره ارسال کنید.")
         return
     rec = parse_recording_url(LINK_RE.search(m.text).group(0))
-    if not re.search(r"\.ec\.iau\.ir(?::\d+)?$", rec.host or "") or not re.fullmatch(r"[a-z0-9]+", rec.rec_id or ""):
+    if not is_valid_recording(rec):
         await m.reply("❌ فقط لینکِ معتبرِ آرشیوِ وادانا (آدرسِ ‎ec.iau.ir‎) پذیرفته می‌شود.")
         return
     mode = USER_MODE[uid]
@@ -766,6 +783,7 @@ async def fallback(m: Message):
                    reply_markup=MENU)
 
 async def main():
+    shutil.rmtree(config.WORK_DIR, ignore_errors=True)
     print("bot running...")
     await dp.start_polling(bot)
 

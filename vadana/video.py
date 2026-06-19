@@ -132,39 +132,6 @@ def _concat_file(frames, list_path, tail_seconds=3.0):
     with open(list_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 
-def make_whiteboard_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0,
-                          progress=None):
-    """High-level: package ZIP -> synced whiteboard MP4. Returns out_path, or
-    None if the recording has no whiteboard content (e.g. it's a slide deck).
-
-    progress(stage, pct) is called with stage in {parse, audio, render, encode, done}."""
-    from . import whiteboard as wb_mod
-    from . import audio as audio_mod
-
-    def rep(stage, pct):
-        if progress:
-            progress(stage, pct)
-
-    rep("parse", 4)
-    wb = wb_mod.load_from_package(zf)
-    if not wb.pages:
-        return None
-    os.makedirs(work_dir, exist_ok=True)
-    rep("audio", 12)
-    audio_path = audio_mod.extract_audio(zf, work_dir, os.path.join(work_dir, "audio.m4a"),
-                                         progress=lambda fr: rep("audio", 12 + fr * 5))
-    rep("render", 18)
-    frames = build_frames(wb, os.path.join(work_dir, "frames"), scale=scale, max_fps=max_fps,
-                          progress=lambda i, n: rep("render", 18 + int(64 * i / max(1, n))))
-    if not frames:
-        return None
-    rep("encode", 84)
-    t0 = frames[0][0]
-    mux(frames, audio_path, out_path, work_dir, audio_skip_seconds=t0,
-        progress=lambda fr: rep("encode", 84 + fr * 15), out_fps=4)
-    rep("done", 100)
-    return out_path
-
 def pdf_frames(pdf_paths, frames_dir, canvas=(1280, 960)):
     """Render every page of the PDFs onto a uniform white canvas. Returns png paths."""
     import fitz

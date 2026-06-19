@@ -2,7 +2,7 @@
 import os
 import sys
 
-from vadana.connect import parse_recording_url, ConnectClient
+from vadana.connect import parse_recording_url, ConnectClient, is_valid_recording
 from vadana.slides import download_slides
 
 try:
@@ -41,6 +41,9 @@ def main():
     for i, link in enumerate(links, 1):
         rec = parse_recording_url(link)
         print(f"\n========== [{i}/{len(links)}] {rec.rec_id} ==========")
+        if not is_valid_recording(rec):
+            print("[!] not a valid Vadana recording link (must be …ec.iau.ir) — skipped.")
+            continue
         client = ConnectClient(rec.host, rec.token, proxy=os.environ.get("IRAN_PROXY") or None)
         try:
             saved = download_slides(client, rec.rec_id, os.path.join("slides", rec.rec_id))

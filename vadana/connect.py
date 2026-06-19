@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import re
 import time
 import zipfile
 from dataclasses import dataclass
@@ -10,6 +11,19 @@ import requests
 import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+_HOST_RE = re.compile(r"\.ec\.iau\.ir(?::\d+)?$")
+
+def is_valid_recording(rec: "Recording") -> bool:
+    """The input filter for every entry point (bot, API, CLIs). The host must be an
+    IAU branch under ec.iau.ir, the recording id alphanumeric, and the session token
+    (optional) alphanumeric — so a crafted link can't smuggle a different host
+    (SSRF), a traversal path, or URL/header tricks through the session value."""
+    return bool(
+        _HOST_RE.search(rec.host or "")
+        and re.fullmatch(r"[a-z0-9]+", rec.rec_id or "")
+        and re.fullmatch(r"[A-Za-z0-9]*", rec.token or "")
+    )
 
 @dataclass
 class Recording:
@@ -48,8 +62,10 @@ class ConnectClient:
         self.session = s
 
     def _full(self, path: str) -> str:
-        u = path if path.startswith("http") else f"{self.host}{path if path.startswith('/') else '/' + path}"
-        return u + ("&" if "?" in u else "?") + "session=" + self.token
+        u = f"{self.host}{path if path.startswith('/') else '/' + path}"
+        if not self.token:
+            return u
+        return f"{u}{'&' if '?' in u else '?'}session={self.token}"
 
     def get(self, path: str, timeout: int = 180, **kw) -> requests.Response:
         return self.session.get(self._full(path), timeout=timeout, **kw)

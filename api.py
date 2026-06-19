@@ -11,7 +11,6 @@ Needs:  pip install fastapi uvicorn   (set IRAN_PROXY in the env when hosting ab
 from __future__ import annotations
 
 import os
-import re
 import tempfile
 import zipfile
 
@@ -19,11 +18,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from vadana.connect import parse_recording_url, ConnectClient
+from vadana.connect import parse_recording_url, ConnectClient, is_valid_recording
 from vadana.slides import download_slides
 from vadana import whiteboard as wb_mod
 
-app = FastAPI(title="Vadana Extractor", version="2.2.2")
+app = FastAPI(title="Vadana Extractor", version="2.3.0")
 
 
 class ExtractRequest(BaseModel):
@@ -33,8 +32,7 @@ class ExtractRequest(BaseModel):
 
 def _client(url: str) -> tuple[ConnectClient, str]:
     rec = parse_recording_url(url)
-    # accept any IAU branch host (vadavc30, vadana14, …) under ec.iau.ir; session optional
-    if not re.search(r"\.ec\.iau\.ir(?::\d+)?$", rec.host or "") or not re.fullmatch(r"[a-z0-9]+", rec.rec_id or ""):
+    if not is_valid_recording(rec):                # any IAU branch under ec.iau.ir; session optional
         raise HTTPException(400, "not a valid Vadana recording url")
     proxy = os.environ.get("IRAN_PROXY") or None
     return ConnectClient(rec.host, rec.token, proxy=proxy), rec.rec_id
