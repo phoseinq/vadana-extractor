@@ -19,7 +19,7 @@
 
 <div align="center">
 
-<img src="assets/bot-welcome.png" alt="ربات آرشیو وادانا" height="240"> <img src="assets/cli.png" alt="vadana CLI" height="240">
+<img src="assets/bot.png" alt="ربات آرشیو وادانا" height="240"> <img src="assets/cli.png" alt="vadana CLI" height="240">
 
 </div>
 
