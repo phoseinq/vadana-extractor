@@ -11,6 +11,8 @@
 **Recover slides, whiteboard & a synced video from IAU "Vadana" (Adobe Connect) class recordings**
 **بازیابیِ اسلاید، وایت‌برد و ویدیوی همگام از ضبط‌های کلاسِ «وادانا» (ادوبی کانکت)**
 
+### ▶️ Try the live bot — [@iau_archive_Bot](https://t.me/iau_archive_Bot)
+
 [English](#english) · [فارسی](#فارسی)
 
 </div>
@@ -19,42 +21,29 @@
 
 ## English
 
-### 📖 Description
+### What it does
 
-**Vadana Extractor** recovers study material from Adobe Connect ("Vadana") class recordings — straight from each recording's own offline package. It works with every IAU branch: the host is `vada<something><number>.ec.iau.ir` and the city code changes per branch (`vadavc30`, `vadana14`, `vadana36`, …), so paste any of them. Most recordings open directly; only some need you to be logged in. The slides you can see but not download, the whiteboard, and recordings stuck in an old Flash-style player — it pulls all of it back out.
+Pulls study material out of Adobe Connect ("Vadana") class recordings — straight from each recording's own offline package. Works with every IAU branch (`vadavc30`, `vadana14`, `vadana36`, … — the city code changes per branch). Most recordings open directly; some need a login.
 
-It ships both as a **Telegram bot** (Persian, multi-user) and as a pair of standalone **CLI tools**.
+It comes as a **Telegram bot** ([@iau_archive_Bot](https://t.me/iau_archive_Bot)) and two **CLI tools**.
 
-**Key Features:**
+- 📄 **Shared files** — the original PDF / Word / PPT from the Share pod, even when the download button was off.
+- 📝 **Whiteboard → PDF** — every board page as a clean PDF, strokes smoothed. If the professor drew on a shared PDF, that page stays behind the annotations.
+- 🎬 **Synced video** — whiteboard + screen-share + audio on one timeline.
+- 🖼️ **Preview + details** — each file arrives with a thumbnail and a short caption (id, date, size, length).
+- 🤖 **Telegram bot** — send a link, pick what you want; live progress, Persian UI, a retry button.
+- 🇮🇷 **Runs anywhere** — locally or on an Iran server with no proxy; a reverse proxy only when hosted abroad.
 
-- 📄 **Original shared files** — downloads the untouched PDF / Word / PPT / any file a professor put in the Share pod (even when the download button was disabled)
-- 📝 **Whiteboard → PDF** — replays the board's timed vector events and renders every page to a clean PDF, with the strokes smoothed so shaky handwriting reads clearly. If the professor drew on a shared PDF, that PDF page is kept **behind** the annotations (not a blank white page)
-- 🎬 **Synced archive video** — rebuilds the lecture on one master timeline: whiteboard **+** screen-share **+** the lecturer's audio, in sync
-- 🖼️ **Preview + details** — every file arrives with a thumbnail (first page / first video frame) and a short caption: recording id, date, size, and the class length for videos
-- 🤖 **Telegram bot** — students just send a recording link and pick what they want; colored inline buttons, a live progress bar, formal Persian UI, a "report a problem" button on every result
-- 🇮🇷 **Works anywhere** — runs locally or on an Iran server with no proxy; add a reverse proxy only when you host it abroad
-- 🗃️ **Telegram-backed cache** — each result is uploaded once to a private channel and re-sent instantly by `file_id` (nothing kept on disk)
-- 🛡️ **Server protection** — per-user single job, global concurrency cap, cooldown, daily video quota, systemd resource limits
-- 📦 **Large files** — optional local Bot API server for uploads up to 2 GB
+### Requirements
 
----
+- Python **3.11–3.13**
+- `ffmpeg` + `ffprobe` on `PATH` (only for video)
+- A bot token from [@BotFather](https://t.me/BotFather) (bot mode only)
+- No proxy on a personal / Iran machine — only a reverse proxy when hosting abroad
 
-### 📋 Requirements
+### CLI (Windows or any computer)
 
-- Python **3.11–3.13** (Pillow text rendering can crash on 3.14 alpha)
-- `ffmpeg` + `ffprobe` on `PATH` (only for whiteboard → video)
-- A Telegram Bot Token from [@BotFather](https://t.me/BotFather) — bot mode only
-- A proxy is **not** needed on a personal machine or an Iran server — only when you run on a server abroad (a reverse proxy that reaches your branch's host, e.g. `vadavc30.ec.iau.ir`)
-
----
-
-### 🚀 CLI usage (Windows or any computer)
-
-One-time setup — on **Windows**:
-
-1. Install [Python 3.11–3.13](https://www.python.org/downloads/) and tick **Add Python to PATH** in the installer.
-2. Install **ffmpeg** (only needed for the video): run `winget install ffmpeg`, or download a build from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) and add its `bin` folder to PATH.
-3. Download the code and install the Python packages:
+Install [Python 3.11–3.13](https://www.python.org/downloads/) (tick **Add to PATH**) and, for video, **ffmpeg** (`winget install ffmpeg`). Then:
 
 ```bash
 git clone https://github.com/phoseinq/vadana-extractor
@@ -62,128 +51,65 @@ cd vadana-extractor
 pip install -r requirements.txt
 ```
 
-Inside Iran you don't need a proxy — it reaches Vadana directly. Now run the tools:
-
-**1. Download the original shared files**
-
 ```bash
-python download_slides.py "https://vadavc30.ec.iau.ir/<id>/"
+python download_slides.py "https://vadavc30.ec.iau.ir/<id>/"   # shared files
+python make_video.py "<url>"                                   # synced video
+python make_video.py "<url>" --pages-only                      # board pages as a PDF
 ```
 
-**2. Whiteboard → synced MP4** — add `--pages-only` for just the board pages as a PDF:
+The plain link is usually enough. If a recording asks you to log in, copy the full link including its `session=` value (it expires fast).
 
-```bash
-python make_video.py "<url>"
-python make_video.py "<url>" --pages-only
-```
-
-Most recordings open directly, so the plain link is enough. If a recording asks you to log in, copy the full link including its `session=` value (it expires fast, so grab a fresh one right before running).
-
----
-
-### 🤖 Bot setup
+### Bot setup
 
 ```bash
 git clone https://github.com/phoseinq/vadana-extractor.git /opt/vadana-extractor
 cd /opt/vadana-extractor
 bash install.sh
-vadana env
+vadana env          # edit the config below, then it restarts
 systemctl enable --now vadana-bot
 ```
 
-`install.sh` installs ffmpeg, a virtualenv, the dependencies, the systemd service and the `vadana` command. `vadana env` opens the config below and restarts the bot.
-
-```ini
-BOT_TOKEN=123456:ABC...
-IRAN_PROXY=
-ADMINS=11111111
-STORAGE_CHANNEL=-1001234567890
-ALLOW_VIDEO=0
-```
+`install.sh` sets up ffmpeg, a virtualenv, the dependencies, the systemd service and the `vadana` command.
 
 | Variable | Meaning |
 | :-- | :-- |
-| `BOT_TOKEN` | bot token from [@BotFather](https://t.me/BotFather) — **required** |
-| `IRAN_PROXY` | **optional**, only when hosting abroad — an HTTP or SOCKS5 proxy: `http://user:pass@ip:port` or `socks5://user:pass@ip:port`. Leave empty on a personal/Iran machine |
-| `ADMINS` | comma-separated Telegram user ids allowed to build videos |
-| `STORAGE_CHANNEL` | private channel id used as a file cache (the bot must be an admin there) |
-| `ALLOW_VIDEO` | `1` lets everyone build videos (heavy); `0` keeps it admin-only |
+| `BOT_TOKEN` | token from [@BotFather](https://t.me/BotFather) — **required** |
+| `IRAN_PROXY` | HTTP/SOCKS5 proxy, only when hosting abroad; empty otherwise |
+| `ADMINS` | comma-separated user ids allowed to build videos |
+| `STORAGE_CHANNEL` | private channel id used as a file cache (bot must be admin) |
+| `ALLOW_VIDEO` | `1` = everyone can build videos; `0` = admin-only |
 
----
-
-### 🧰 The `vadana` CLI
-
-`install.sh` installs a `vadana` command — it both **downloads recordings** and **manages the bot service**. Run it with no arguments for an interactive menu, or a subcommand directly:
-
-```bash
-vadana
-vadana files
-vadana whiteboard
-vadana video
-vadana status
-vadana logs
-vadana start
-vadana stop
-vadana restart
-vadana update
-vadana env
-vadana uninstall
-```
+### The `vadana` command
 
 | Command | Action |
 | :-- | :-- |
 | `vadana` | interactive menu |
-| `files` | download the shared files |
-| `whiteboard` | whiteboard as a PDF |
-| `video` | synced archive video |
-| `status` | service status |
-| `logs` | live logs (Ctrl+C to exit) |
+| `files` / `whiteboard` / `video` | download that output |
+| `status` / `logs` | service status / live logs |
 | `start` / `stop` / `restart` | control the service |
-| `update` | git pull + reinstall deps + restart |
+| `update` | git pull + reinstall + restart |
 | `env` | edit `.env`, then restart |
-| `uninstall` | remove the service (asks before deleting data) |
+| `uninstall` | remove the service |
 
-A download command asks for the recording link if you don't pass one — both `vadana video` (prompts) and `vadana video "https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true"` work.
+### How it works
 
----
+Each recording exposes an offline ZIP at `/<id>/output/<id>.zip`. Shared documents come from `downloadUrl`s in `mainstream.xml`; the whiteboard is timed vector events in `ftcontent*.xml`, replayed to redraw the board; audio and screen-share are placed on the master timeline from `indexstream.xml` and muxed with FFmpeg.
 
-### ⚙️ How it works
-
-Every recording exposes an offline package at `/<id>/output/<id>.zip?download=zip` (cookie `BREEZESESSION`). Inside:
-
-- **Shared documents** aren't in the package, but `mainstream.xml` records a `downloadUrl` for each → resolved to the untouched source file.
-- **Whiteboard** lives in `ftcontent*.xml` as timed vector events on per-page SharedObjects (`set_WB_So_<page>`); strokes are normalized to each shape's bounding box. The events are replayed to redraw the board.
-- **Audio & screen-share** segments are placed on the master timeline from `indexstream.xml` offsets and muxed together with FFmpeg.
-
-Concurrency is bounded by asyncio semaphores (a built-in queue): when the server is busy, extra requests wait their turn instead of piling on.
-
----
-
-### 🌐 HTTP API (optional)
-
-Turn the extractor into a small service:
+### HTTP API (optional)
 
 ```bash
 pip install -r requirements-api.txt
 uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-```bash
-curl -X POST localhost:8000/extract -H "Content-Type: application/json" -d '{"url":"https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true","kind":"files"}' -o files.zip
-```
+`POST /extract` with `{"url": "...", "kind": "files"}` returns a zip of the shared files (or `"kind": "whiteboard"` for the board PDF).
 
-`kind` is `files` (a zip of the shared files) or `whiteboard` (the board as a PDF).
-
----
-
-### 🧪 Tests
+### Tests
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
 ```
-
-CI runs the suite (ruff + pytest on Python 3.11 & 3.12) on every push.
 
 ---
 
@@ -191,44 +117,29 @@ CI runs the suite (ruff + pytest on Python 3.11 & 3.12) on every push.
 
 <div dir="rtl" align="right">
 
-### 📖 معرفی
+### چه‌کار می‌کند
 
-**Vadana Extractor** جزوه و محتوای درسی را از ضبط‌های کلاسِ ادوبی کانکت («وادانا») بیرون می‌کشد — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط. با همهٔ شعبه‌های دانشگاه آزاد کار می‌کند: آدرس به‌شکلِ `vada…<عدد>.ec.iau.ir` است و کدِ شهر در هر شعبه فرق می‌کند (`vadavc30`، `vadana14`، `vadana36`، …)، پس هرکدام را بفرستی قبول می‌کند. بیشترِ ضبط‌ها مستقیم باز می‌شوند؛ فقط بعضی‌ها به ورود نیاز دارند. اسلایدهایی که می‌بینید ولی دانلود نمی‌شوند، وایت‌برد، و ضبط‌هایی که فقط در یک پلیرِ قدیمیِ فلش باز می‌شوند — همه را بیرون می‌کشد.
+جزوه و محتوای درسی را از ضبط‌های کلاسِ ادوبی کانکت («وادانا») بیرون می‌کشد — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط. با همهٔ شعبه‌های دانشگاه آزاد کار می‌کند (`vadavc30`، `vadana14`، `vadana36`، … — کدِ شهر در هر شعبه فرق می‌کند). بیشترِ ضبط‌ها مستقیم باز می‌شوند؛ بعضی‌ها به ورود نیاز دارند.
 
-هم به‌صورتِ **رباتِ تلگرام** (فارسی، چندکاربره) عرضه می‌شود و هم دو **ابزارِ خط‌فرمان**.
+هم رباتِ تلگرام است ([@iau_archive_Bot](https://t.me/iau_archive_Bot))، هم دو ابزارِ خط‌فرمان.
 
-**امکانات:**
+- 📄 **فایل‌های اشتراکی** — همان PDF/Word/PPTِ اصل از Share pod، حتی وقتی دکمهٔ دانلود بسته بوده.
+- 📝 **وایت‌برد ← PDF** — هر صفحهٔ تخته به‌صورتِ PDFِ تمیز، با خط‌های صاف‌شده. اگر استاد روی یک PDFِ اشتراکی نوشته باشد، همان صفحه پشتِ نوشته‌ها می‌ماند.
+- 🎬 **ویدیوی همگام** — وایت‌برد + اشتراکِ صفحه + صدا روی یک تایم‌لاین.
+- 🖼️ **پیش‌نمایش و جزئیات** — هر فایل با تامبنیل و یک کپشنِ کوتاه می‌رسد (شناسه، تاریخ، حجم، مدت).
+- 🤖 **رباتِ تلگرام** — لینک را بفرست و انتخاب کن؛ نوارِ پیشرفتِ زنده، رابطِ فارسی، دکمهٔ تلاش مجدد.
+- 🇮🇷 **همه‌جا کار می‌کند** — روی سیستمِ شخصی یا سرورِ ایران بدونِ پروکسی؛ پروکسیِ ریورس فقط روی سرورِ خارج.
 
-- 📄 **فایل‌های اشتراکیِ اصل** — دانلودِ PDF/Word/PPT یا هر فایلی که استاد توی Share pod گذاشته (حتی وقتی دکمهٔ دانلود غیرفعال بوده)
-- 📝 **وایت‌برد ← PDF** — بازپخشِ رویدادهای بُرداریِ تخته و رندرِ همهٔ صفحه‌ها به یه PDFِ تمیز، با خط‌هایی که صاف شده‌اند تا دست‌خطِ ناخوانا هم واضح در بیاید. اگر استاد روی یک PDFِ اشتراکی نوشته باشد، همان صفحهٔ PDF **پشتِ** نوشته‌ها می‌ماند (نه صفحهٔ سفیدِ خالی)
-- 🎬 **ویدیوی همگامِ آرشیو** — بازسازیِ کلاس روی یه تایم‌لاینِ واحد: وایت‌برد **+** اشتراکِ صفحه **+** صدای استاد، همگام
-- 🖼️ **پیش‌نمایش و جزئیات** — هر فایل با یه تامبنیل (صفحهٔ اول / فریمِ اولِ ویدیو) و یه کپشنِ کوتاه می‌رسد: شناسهٔ کلاس، تاریخ، حجم، و برای ویدیو مدتِ کلاس
-- 🤖 **رباتِ تلگرام** — دانشجو فقط لینکِ ضبط رو می‌فرسته و انتخاب می‌کنه؛ دکمه‌های رنگی، نوارِ پیشرفتِ زنده، رابطِ رسمیِ فارسی، و دکمهٔ «گزارشِ مشکل» زیرِ هر خروجی
-- 🇮🇷 **همه‌جا کار می‌کنه** — روی سیستمِ شخصی یا سرورِ ایران بدونِ پروکسی؛ پروکسیِ ریورس فقط وقتی لازمه که روی سرورِ خارج اجراش کنی
-- 🗃️ **کشِ مبتنی‌بر تلگرام** — هر خروجی یک‌بار توی یه چنلِ خصوصی آپلود و دفعهٔ بعد با `file_id` فوری ارسال می‌شه
-- 🛡️ **محافظت از سرور** — یک کارِ همزمان برای هر کاربر، سقفِ کلیِ همزمانی، کول‌داون، سهمیهٔ روزانهٔ ویدیو، محدودیتِ منابعِ systemd
-- 📦 **فایلِ بزرگ** — سرورِ محلیِ Bot API (اختیاری) برای آپلودِ تا ۲ گیگ
+### پیش‌نیازها
 
----
+- پایتون **۳.۱۱ تا ۳.۱۳**
+- `ffmpeg` و `ffprobe` روی `PATH` (فقط برای ویدیو)
+- توکنِ ربات از [@BotFather](https://t.me/BotFather) (فقط حالتِ ربات)
+- روی سیستمِ شخصی/ایران پروکسی لازم نیست — فقط روی سرورِ خارج یک پروکسیِ ریورس
 
-### 📋 پیش‌نیازها
+### خط‌فرمان (ویندوز یا هر کامپیوتری)
 
-- پایتون **۳.۱۱ تا ۳.۱۳** (رندرِ متنِ Pillow روی ۳.۱۴ آلفا کرش می‌کنه)
-- `ffmpeg` و `ffprobe` روی `PATH` (فقط برای ویدیوسازی)
-- توکنِ رباتِ تلگرام از [@BotFather](https://t.me/BotFather) — فقط حالتِ ربات
-- روی سیستمِ شخصی یا سرورِ ایران **پروکسی لازم نیست**؛ فقط روی سرورِ خارج یه پروکسیِ ریورس می‌خوای که به آدرسِ شعبهٔ خودت برسه (مثلِ `vadavc30.ec.iau.ir`)
-
----
-
-### 🚀 خط‌فرمان (ویندوز یا هر کامپیوتری)
-
-راه‌اندازیِ اولیه روی **ویندوز**:
-
-**۱)** [پایتون ۳.۱۱ تا ۳.۱۳](https://www.python.org/downloads/) را نصب کنید و گزینهٔ **Add Python to PATH** را در نصب‌کننده تیک بزنید.
-
-**۲)** **ffmpeg** را نصب کنید (فقط برای ویدیو لازم است): دستورِ `winget install ffmpeg` را بزنید، یا یک نسخه از [gyan.dev](https://www.gyan.dev/ffmpeg/builds/) بگیرید و پوشهٔ `bin` آن را به PATH اضافه کنید.
-
-**۳)** کد و پکیج‌های پایتون را بگیرید:
+[پایتون ۳.۱۱ تا ۳.۱۳](https://www.python.org/downloads/) را نصب کن (گزینهٔ **Add to PATH** را بزن) و برای ویدیو هم **ffmpeg** را (`winget install ffmpeg`). بعد:
 
 ```bash
 git clone https://github.com/phoseinq/vadana-extractor
@@ -236,112 +147,65 @@ cd vadana-extractor
 pip install -r requirements.txt
 ```
 
-داخلِ ایران پروکسی لازم ندارید — مستقیم به وادانا می‌رسد. حالا ابزارها را اجرا کنید:
-
-**۱) دانلودِ فایل‌های اشتراکیِ اصل:**
-
 ```bash
-python download_slides.py "https://vadavc30.ec.iau.ir/<id>/"
+python download_slides.py "https://vadavc30.ec.iau.ir/<id>/"   # فایل‌های اشتراکی
+python make_video.py "<url>"                                   # ویدیوی همگام
+python make_video.py "<url>" --pages-only                      # فقط صفحه‌های تخته (PDF)
 ```
 
-**۲) وایت‌برد ← ویدیوی همگام** — با `--pages-only` فقط صفحه‌های تخته به PDF می‌شه:
+معمولاً همین لینکِ ساده کافی است. اگر ضبطی به ورود نیاز داشت، لینکِ کامل همراه با مقدارِ `session=` را کپی کن (زود منقضی می‌شود).
 
-```bash
-python make_video.py "<url>"
-python make_video.py "<url>" --pages-only
-```
-
-بیشترِ ضبط‌ها مستقیم باز می‌شوند و همین لینکِ ساده کافی است. اگر ضبطی به ورود نیاز داشت، لینکِ کامل همراه با مقدارِ `session=` را کپی کن (زود منقضی می‌شود، پس درست قبلِ اجرا یه لینکِ تازه بگیر).
-
----
-
-### 🤖 راه‌اندازیِ ربات
+### راه‌اندازیِ ربات
 
 ```bash
 git clone https://github.com/phoseinq/vadana-extractor.git /opt/vadana-extractor
 cd /opt/vadana-extractor
 bash install.sh
-vadana env
+vadana env          # کانفیگِ زیر را ویرایش کن، بعد خودش ری‌استارت می‌شود
 systemctl enable --now vadana-bot
 ```
 
-`install.sh` خودش ffmpeg، یه virtualenv، وابستگی‌ها، سرویسِ systemd و دستورِ `vadana` رو نصب می‌کنه. دستورِ `vadana env` کانفیگِ زیر رو باز می‌کنه و بعد ربات رو ری‌استارت می‌کنه.
-
-```ini
-BOT_TOKEN=123456:ABC...
-IRAN_PROXY=
-ADMINS=11111111
-STORAGE_CHANNEL=-1001234567890
-ALLOW_VIDEO=0
-```
+`install.sh` خودش ffmpeg، یک virtualenv، وابستگی‌ها، سرویسِ systemd و دستورِ `vadana` را نصب می‌کند.
 
 | متغیر | توضیح |
 | :-- | :-- |
-| `BOT_TOKEN` | توکنِ ربات از [@BotFather](https://t.me/BotFather) — **اجباری** |
-| `IRAN_PROXY` | **اختیاری**، فقط روی سرورِ خارج — پروکسیِ HTTP یا SOCKS5: `http://user:pass@ip:port` یا `socks5://user:pass@ip:port`؛ روی سیستمِ شخصی/ایران خالی بذار |
-| `ADMINS` | آی‌دیِ کاربرهای تلگرام (با کاما) که اجازهٔ ساختِ ویدیو دارن |
-| `STORAGE_CHANNEL` | آی‌دیِ چنلِ خصوصی برای کشِ فایل‌ها (ربات باید ادمینش باشه) |
-| `ALLOW_VIDEO` | `۱` ساختِ ویدیو رو برای همه باز می‌کنه (سنگین)؛ `۰` فقط ادمین |
+| `BOT_TOKEN` | توکن از [@BotFather](https://t.me/BotFather) — **اجباری** |
+| `IRAN_PROXY` | پروکسیِ HTTP/SOCKS5، فقط روی سرورِ خارج؛ وگرنه خالی |
+| `ADMINS` | آی‌دیِ کاربرها (با کاما) که اجازهٔ ساختِ ویدیو دارند |
+| `STORAGE_CHANNEL` | آی‌دیِ چنلِ خصوصی برای کشِ فایل‌ها (ربات باید ادمین باشد) |
+| `ALLOW_VIDEO` | `۱` = ساختِ ویدیو برای همه؛ `۰` = فقط ادمین |
 
----
-
-### 🧰 ابزارِ `vadana`
-
-`install.sh` یه دستورِ `vadana` نصب می‌کنه که هم **ضبط‌ها رو دانلود می‌کنه** و هم **سرویسِ ربات رو مدیریت می‌کنه**. بدونِ آرگومان منوی تعاملی می‌ده، یا مستقیم با ساب‌کامند:
-
-```bash
-vadana
-vadana files
-vadana whiteboard
-vadana video
-vadana status
-vadana logs
-vadana start
-vadana stop
-vadana restart
-vadana update
-vadana env
-vadana uninstall
-```
+### دستورِ `vadana`
 
 | دستور | کار |
 | :-- | :-- |
 | `vadana` | منوی تعاملی |
-| `files` | دانلودِ فایل‌های اشتراکی |
-| `whiteboard` | وایت‌برد به‌صورتِ PDF |
-| `video` | ویدیوی همگامِ آرشیو |
-| `status` | وضعیتِ سرویس |
-| `logs` | لاگِ زنده (Ctrl+C برای خروج) |
+| `files` / `whiteboard` / `video` | دانلودِ همان خروجی |
+| `status` / `logs` | وضعیتِ سرویس / لاگِ زنده |
 | `start` / `stop` / `restart` | کنترلِ سرویس |
-| `update` | git pull + نصبِ مجددِ وابستگی‌ها + ری‌استارت |
+| `update` | git pull + نصبِ مجدد + ری‌استارت |
 | `env` | ویرایشِ `.env` و ری‌استارت |
-| `uninstall` | حذفِ سرویس (قبلِ پاکِ داده می‌پرسه) |
+| `uninstall` | حذفِ سرویس |
 
-اگه لینک ندی، خودش لینک رو می‌پرسه — هم `vadana video` (prompt می‌گیره) و هم `vadana video "https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true"` کار می‌کنه.
+### چطور کار می‌کند
 
----
+هر ضبط یک ZIPِ آفلاین در `/<id>/output/<id>.zip` دارد. اسناد اشتراکی از `downloadUrl`های داخلِ `mainstream.xml` می‌آیند؛ وایت‌برد رویدادهای بُرداریِ زمان‌دار در `ftcontent*.xml` است که بازپخش می‌شود تا تخته دوباره کشیده شود؛ صدا و اشتراکِ صفحه با offsetهای `indexstream.xml` روی تایم‌لاین می‌نشینند و با FFmpeg ترکیب می‌شوند.
 
-### 🌐 API (اختیاری)
-
-تبدیلِ ابزار به یک سرویس:
+### API (اختیاری)
 
 ```bash
 pip install -r requirements-api.txt
 uvicorn api:app --host 0.0.0.0 --port 8000
 ```
 
-`POST /extract` با بدنهٔ `{"url": "...", "kind": "files"}` یه zip از فایل‌ها برمی‌گردونه (یا با `"kind": "whiteboard"` یه PDF).
+`POST /extract` با `{"url": "...", "kind": "files"}` یک zip از فایل‌ها برمی‌گرداند (یا با `"kind": "whiteboard"` همان PDFِ تخته).
 
----
-
-### 🧪 تست
+### تست
 
 ```bash
 pip install -r requirements-dev.txt
 pytest
 ```
-
-CI روی هر push تست‌ها رو اجرا می‌کنه (ruff + pytest روی پایتون ۳.۱۱ و ۳.۱۲).
 
 </div>
 
