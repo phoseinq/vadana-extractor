@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.2
++ Annotated-PDF video: the PDF page now follows the recording's **real page-flip timeline** (the `currentPage` events), so it switches exactly when the professor flipped — exact, deterministic sync, replacing the v2.2.1 midpoint estimate
+
 ## v2.2.1
 + Annotated-PDF video: the PDF page now switches at the midpoint of a long talk-gap instead of waiting for the next stroke, so the page tracks the audio more closely (the package records strokes, not page flips, so this is a best-effort estimate)
 

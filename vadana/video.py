@@ -12,7 +12,16 @@ from .whiteboard import Whiteboard, NATIVE_W, NATIVE_H
 def _blank(scale):
     return Image.new("RGB", (NATIVE_W * scale, NATIVE_H * scale), "white")
 
-PAGE_FLIP_GAP_MS = 4000
+def _clean_nav(nav, min_show_ms=500):
+    """Drop page flips that flashed past for under min_show_ms (rapid back-and-forth)
+    so the video doesn't flicker; keep the page the prof actually settled on."""
+    nav = sorted(set(nav))
+    out = []
+    for i, (t, p) in enumerate(nav):
+        nxt = nav[i + 1][0] if i + 1 < len(nav) else 1 << 62
+        if nxt - t >= min_show_ms:
+            out.append((t, p))
+    return out or nav[-1:]
 
 def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
                  max_fps: float = 4.0, progress=None, backgrounds=None) -> list[tuple[float, str]]:
@@ -57,22 +66,50 @@ def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
         idx += 1
 
     last_emit = -1e9
+    nav = _clean_nav(getattr(wb, "nav", None) or [])
+
+    if backgrounds and nav:
+        stream = ([(t, 0, ("show", p)) for (t, p) in nav]
+                  + [(t, 1, ("draw", pg, sid, sh)) for (t, pg, sid, sh) in wb.events])
+        stream.sort(key=lambda e: (e[0], e[1]))
+        total = len(stream) or 1
+        displayed = None
+        for ev_i, (t, _, pl) in enumerate(stream, 1):
+            if pl[0] == "show":
+                page = pl[1]
+                ensure(page)
+                if page != displayed:
+                    displayed = page
+                    emit(t, page)
+                    last_emit = t
+            else:
+                _, page, sid, shape = pl
+                ensure(page)
+                if shape is None:
+                    page_shapes[page].pop(sid, None)
+                    repaint(page)
+                else:
+                    page_shapes[page][sid] = shape
+                    wb_mod.draw_shape(page_draw[page], shape, scale, W, H)
+                if page == displayed and t - last_emit >= interval:
+                    emit(t, page)
+                    last_emit = t
+            if progress and ev_i % 15 == 0:
+                progress(ev_i, total)
+        if displayed is not None and (not frames or frames[-1][0] < wb.duration_ms / 1000.0):
+            emit(wb.duration_ms, displayed)
+        return frames
+
     current_page = None
-    prev_page, prev_t = None, None
     total_ev = len(wb.events) or 1
     for ev_i, (t, page, sid, shape) in enumerate(wb.events, 1):
         ensure(page)
-        if backgrounds and prev_page is not None and page != prev_page and t - prev_t > PAGE_FLIP_GAP_MS:
-            mid = (prev_t + t) / 2
-            emit(mid, page)
-            last_emit = mid
         if shape is None:
             page_shapes[page].pop(sid, None)
             repaint(page)
         else:
             page_shapes[page][sid] = shape
             wb_mod.draw_shape(page_draw[page], shape, scale, W, H)
-        prev_page, prev_t = page, t
         current_page = page
         if t - last_emit >= interval:
             emit(t, page)

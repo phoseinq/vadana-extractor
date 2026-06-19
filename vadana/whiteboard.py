@@ -27,6 +27,7 @@ _CHANGE_RE = re.compile(
 )
 _PAGE_RE = re.compile(r"<String><!\[CDATA\[set_WB_So_(\d+)\]\]>")
 _PT_RE = re.compile(r"<x><!\[CDATA\[([^\]]*)\]\]></x>\s*<y><!\[CDATA\[([^\]]*)\]\]></y>")
+_CURPAGE_RE = re.compile(r"<name><!\[CDATA\[currentPage\]\]></name>\s*<newValue><!\[CDATA\[(\d+)\]\]></newValue>")
 
 @dataclass
 class Shape:
@@ -45,6 +46,7 @@ class Shape:
 class Whiteboard:
     final: dict
     events: list
+    nav: list = field(default_factory=list)
 
     @property
     def pages(self) -> list[int]:
@@ -101,7 +103,11 @@ def _parse_shape(nv: str, t: int) -> Shape | None:
 def parse(ftcontent_xml: str) -> Whiteboard:
     final: dict = {}
     events: list = []
+    nav: list = []
     for t_str, body in _MSG_RE.findall(ftcontent_xml):
+        cp = _CURPAGE_RE.search(body)
+        if cp:
+            nav.append((int(t_str), int(cp.group(1))))
         pg = _PAGE_RE.search(body)
         if not pg:
             continue
@@ -119,7 +125,7 @@ def parse(ftcontent_xml: str) -> Whiteboard:
             if shape:
                 final[page][sid] = shape
                 events.append((t, page, sid, shape))
-    return Whiteboard(final=final, events=events)
+    return Whiteboard(final=final, events=events, nav=nav)
 
 def _font(size: int) -> ImageFont.FreeTypeFont:
     for p in FONT_CANDIDATES:
@@ -256,6 +262,7 @@ def load_from_package(zf: zipfile.ZipFile) -> Whiteboard:
     fts = sorted(n for n in zf.namelist() if re.fullmatch(r"ftcontent\d+\.xml", n))
     merged_final: dict = {}
     merged_events: list = []
+    merged_nav: list = []
     for fidx, name in enumerate(fts):
         xml = zf.read(name).decode("utf-8", "replace")
         if "set_WB_So" not in xml:
@@ -266,8 +273,11 @@ def load_from_package(zf: zipfile.ZipFile) -> Whiteboard:
                 merged_final[(fidx, page)] = shapes
         for t, page, sid, shape in wb.events:
             merged_events.append((t, (fidx, page), sid, shape))
+        for t, page in wb.nav:
+            merged_nav.append((t, (fidx, page)))
     merged_events.sort(key=lambda e: e[0])
-    return Whiteboard(final=merged_final, events=merged_events)
+    merged_nav.sort(key=lambda e: e[0])
+    return Whiteboard(final=merged_final, events=merged_events, nav=merged_nav)
 
 def make_pdf(zf: zipfile.ZipFile, out_path: str, scale: int = 2,
              thumb_path: str | None = None, pdf_paths=None) -> str | None:

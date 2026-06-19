@@ -29,7 +29,7 @@ def test_pdf_backgrounds_matches_page_count(tmp_path):
     assert wb.pdf_backgrounds([str(p)], [(0, 0), (0, 1), (0, 2)]) == {}   # page-count mismatch
 
 
-def test_build_frames_inserts_midpoint_on_page_flip(tmp_path):
+def test_build_frames_follows_currentpage_nav(tmp_path):
     from PIL import Image
 
     from vadana import video as vid
@@ -38,17 +38,19 @@ def test_build_frames_inserts_midpoint_on_page_flip(tmp_path):
     def pencil(page, t):
         return (t, page, f"s{t}", Shape("pencil", 1, t, pts=[(100.0, 100.0), (200.0, 200.0)]))
 
-    # two strokes on page 0, then a 10s talk gap before the first stroke on page 1
-    events = [pencil((0, 0), 1000), pencil((0, 0), 2000), pencil((0, 1), 12000)]
-    board = Whiteboard(final={(0, 0): {}, (0, 1): {}}, events=events)
+    # prof flips to page 1 at 5s (just talks), and only draws on it at 30s
+    events = [pencil((0, 0), 1000), pencil((0, 1), 30000)]
+    nav = [(1000, (0, 0)), (5000, (0, 1))]
+    board = Whiteboard(final={(0, 0): {}, (0, 1): {}}, events=events, nav=nav)
     bg = {(0, 0): Image.new("RGB", (40, 30), "white"), (0, 1): Image.new("RGB", (40, 30), "white")}
 
     ts = [t for t, _ in vid.build_frames(board, str(tmp_path / "a"), scale=1, max_fps=2.0, backgrounds=bg)]
     assert ts == sorted(ts)                              # frames stay time-ordered
-    assert any(abs(t - 7.0) < 0.6 for t in ts)           # midpoint of (2s, 12s) shows page 1 early
+    assert any(abs(t - 5.0) < 0.6 for t in ts)           # page shows at the flip (5s), not the 30s stroke
 
+    # no backgrounds -> stroke-driven: the page only appears when it's drawn on (30s)
     ts2 = [t for t, _ in vid.build_frames(board, str(tmp_path / "b"), scale=1, max_fps=2.0)]
-    assert not any(abs(t - 7.0) < 0.6 for t in ts2)      # no backgrounds -> heuristic off
+    assert not any(abs(t - 5.0) < 0.6 for t in ts2)
 
 
 def test_whiteboard_parse_shapes(ftcontent_xml):
