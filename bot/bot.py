@@ -267,9 +267,10 @@ class _Prog:
     def __init__(self):
         self.label, self.pct = "در حال آماده‌سازی…", 0.0
         self.min_total = None
+        self.queued = False
 
     def set(self, label, pct):
-        self.label, self.pct = label, pct
+        self.label, self.pct, self.queued = label, pct, False
 
 async def _poll(status: Message, prog: _Prog, stop: asyncio.Event):
     start, i, last = time.time(), 0, ""
@@ -278,6 +279,20 @@ async def _poll(status: Message, prog: _Prog, stop: asyncio.Event):
         i += 1
         el = time.time() - start
         dt, last_el = el - last_el, el
+        if prog.queued:
+            txt = (f"🕐 در صفِ پردازش\n{prog.label}\n"
+                   f"⏱ {_fmt(el)} در صف {SPIN[i % len(SPIN)]}")
+            if txt != last:
+                try:
+                    await status.edit_text(txt, reply_markup=CANCEL_KB)
+                    last = txt
+                except Exception:
+                    pass
+            try:
+                await asyncio.wait_for(stop.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                pass
+            continue
         pct = prog.pct
         if pct >= 97:
             tail = "در حال اتمام…"
@@ -561,10 +576,10 @@ async def do_files(m, rec, ftype, uid):
     manifest = _store_get("files", rec.rec_id)
 
     if manifest is None:
-        if SLIDES_SEM.locked():
-            await status.edit_text("🕐 سرور در حال حاضر شلوغ است؛ درخواستِ شما در صف قرار گرفت "
-                                   "و به‌محضِ آزاد شدن انجام می‌شود.")
         prog, stop = _Prog(), asyncio.Event()
+        if SLIDES_SEM.locked():
+            prog.queued = True
+            prog.label = "یک دانلودِ دیگر روی سرور در حال انجام است؛ به‌نوبت شروع می‌شود."
         ACTIVE_STOP[uid] = stop
         poller = asyncio.create_task(_poll(status, prog, stop))
         tmp = os.path.join(config.WORK_DIR, f"{rec.rec_id}_files")
@@ -626,10 +641,10 @@ async def do_whiteboard(m, rec, uid):
         STORE["wb"].pop(rec.rec_id, None)
         _store_save()
 
-    if SLIDES_SEM.locked():
-        await status.edit_text("🕐 سرور در حال حاضر شلوغ است؛ درخواستِ شما در صف قرار گرفت "
-                               "و به‌محضِ آزاد شدن انجام می‌شود.")
     prog, stop = _Prog(), asyncio.Event()
+    if SLIDES_SEM.locked():
+        prog.queued = True
+        prog.label = "یک دانلودِ دیگر روی سرور در حال انجام است؛ به‌نوبت شروع می‌شود."
     ACTIVE_STOP[uid] = stop
     poller = asyncio.create_task(_poll(status, prog, stop))
     work = os.path.join(config.WORK_DIR, f"{rec.rec_id}_wb")
@@ -682,12 +697,11 @@ async def do_video(m, rec, uid):
                                "لطفاً فردا دوباره تلاش کنید. (ویدیوهای ساخته‌شدهٔ قبلی همچنان رایگان از آرشیو ارسال می‌شوند.)")
         return
 
-    if VIDEO_SEM.locked():
-        await status.edit_text("🕐 یک ویدیوی دیگر در حال ساخت است؛ درخواستِ شما در صف قرار گرفت "
-                               "و به‌نوبت انجام می‌شود.")
-
     prog, stop = _Prog(), asyncio.Event()
     prog.min_total = VIDEO_ETA_SEC
+    if VIDEO_SEM.locked():
+        prog.queued = True
+        prog.label = "یک ویدیوی دیگر در حال ساخت است؛ به‌نوبت شروع می‌شود."
     ACTIVE_STOP[uid] = stop
     poller = asyncio.create_task(_poll(status, prog, stop))
     work = os.path.join(config.WORK_DIR, f"{rec.rec_id}_video")

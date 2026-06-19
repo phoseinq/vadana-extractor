@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.1.3
++ A request waiting behind another job now clearly shows "🕐 در صفِ پردازش" (in queue) instead of a frozen 0% progress bar that looked stuck
+
 ## v2.1.2
 + The 🔄 retry button now survives a bot restart — the failed job is remembered on disk, so you can still tap retry after the bot updates instead of re-sending the link
 
