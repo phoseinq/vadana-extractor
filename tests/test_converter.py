@@ -1,8 +1,32 @@
 import io
 import zipfile
 
+import pytest
+
 from vadana import whiteboard as wb
 from vadana import timeline as tl
+
+
+def test_pdf_backgrounds_guards():
+    assert wb.pdf_backgrounds([], [(0, 0)]) == {}
+    assert wb.pdf_backgrounds(None, [(0, 0)]) == {}
+    assert wb.pdf_backgrounds(["x.pdf"], []) == {}
+
+
+def test_pdf_backgrounds_matches_page_count(tmp_path):
+    pytest.importorskip("fitz")
+    import img2pdf
+    from PIL import Image
+    pngs = []
+    for c in ((255, 0, 0), (0, 255, 0)):
+        b = io.BytesIO()
+        Image.new("RGB", (40, 30), c).save(b, "PNG")
+        pngs.append(b.getvalue())
+    p = tmp_path / "two.pdf"
+    p.write_bytes(img2pdf.convert(pngs))
+    bg = wb.pdf_backgrounds([str(p)], [(0, 0), (0, 1)])     # 2 pages, 2 keys -> match
+    assert set(bg) == {(0, 0), (0, 1)}
+    assert wb.pdf_backgrounds([str(p)], [(0, 0), (0, 1), (0, 2)]) == {}   # page-count mismatch
 
 
 def test_whiteboard_parse_shapes(ftcontent_xml):

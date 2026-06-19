@@ -185,10 +185,16 @@ def draw_shape(dr: ImageDraw.ImageDraw, s: Shape, scale: int, W: int, H: int) ->
                 pass
             y += lh
 
-def render_page(shapes, scale: int = 2, label: str | None = None, ss: int = 2) -> Image.Image:
-    """Render one page. Supersampled (ss x) then downscaled -> anti-aliased strokes."""
+def render_page(shapes, scale: int = 2, label: str | None = None, ss: int = 2,
+                bg: Image.Image | None = None) -> Image.Image:
+    """Render one page. Supersampled (ss x) then downscaled -> anti-aliased strokes.
+    bg: the shared-PDF page image to draw the strokes over (the professor annotated
+    it); None -> a white board."""
     W, H = NATIVE_W * scale, NATIVE_H * scale
-    im = Image.new("RGB", (W * ss, H * ss), "white")
+    if bg is not None:
+        im = bg.convert("RGB").resize((W * ss, H * ss), Image.LANCZOS)
+    else:
+        im = Image.new("RGB", (W * ss, H * ss), "white")
     dr = ImageDraw.Draw(im)
     for s in sorted(shapes, key=lambda s: s.depth):
         draw_shape(dr, s, scale * ss, W * ss, H * ss)
@@ -198,9 +204,40 @@ def render_page(shapes, scale: int = 2, label: str | None = None, ss: int = 2) -
         ImageDraw.Draw(im).text((8, 8), label, fill=(210, 210, 210), font=_font(20))
     return im
 
-def render_final_pages(wb: Whiteboard, scale: int = 2) -> list[Image.Image]:
-    return [render_page(list(wb.final[p].values()), scale, f"page {i + 1}")
+def render_final_pages(wb: Whiteboard, scale: int = 2, backgrounds: dict | None = None) -> list[Image.Image]:
+    backgrounds = backgrounds or {}
+    return [render_page(list(wb.final[p].values()), scale, f"page {i + 1}", bg=backgrounds.get(p))
             for i, p in enumerate(wb.pages)]
+
+def pdf_backgrounds(pdf_paths, page_keys) -> dict:
+    """Map whiteboard page keys 1:1 onto the pages of whichever shared PDF has the
+    same page count (the document the professor annotated). {} if none matches, so
+    the caller falls back to a white board.
+
+    ponytail: 1:1 page-count match only. A lecture that flips between several PDFs
+    or annotates a subset would need the share-pod page-change events — add that if
+    it actually comes up."""
+    if not pdf_paths or not page_keys:
+        return {}
+    try:
+        import fitz
+    except ImportError:
+        return {}
+    for p in pdf_paths:
+        try:
+            doc = fitz.open(p)
+        except Exception:
+            continue
+        try:
+            if doc.page_count == len(page_keys):
+                out = {}
+                for i, key in enumerate(page_keys):
+                    pix = doc[i].get_pixmap(matrix=fitz.Matrix(2, 2))
+                    out[key] = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+                return out
+        finally:
+            doc.close()
+    return {}
 
 def save_pdf(images: list[Image.Image], path: str) -> None:
     """PDF without relying on Pillow's JPEG codec (uses img2pdf over PNG bytes)."""
@@ -233,14 +270,15 @@ def load_from_package(zf: zipfile.ZipFile) -> Whiteboard:
     return Whiteboard(final=merged_final, events=merged_events)
 
 def make_pdf(zf: zipfile.ZipFile, out_path: str, scale: int = 2,
-             thumb_path: str | None = None) -> str | None:
+             thumb_path: str | None = None, pdf_paths=None) -> str | None:
     """Render the whiteboard's final pages to a PDF. None if no whiteboard content.
     If thumb_path is given, the first page is also written there as a small JPEG
-    (Telegram thumbnail: <=320px)."""
+    (Telegram thumbnail: <=320px). pdf_paths: shared PDFs to use as page backgrounds
+    when the professor annotated a document (page-count must match the board)."""
     wb = load_from_package(zf)
     if not wb.pages:
         return None
-    imgs = render_final_pages(wb, scale)
+    imgs = render_final_pages(wb, scale, pdf_backgrounds(pdf_paths, wb.pages))
     save_pdf(imgs, out_path)
     if thumb_path and imgs:
         th = imgs[0].convert("RGB")

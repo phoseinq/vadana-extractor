@@ -23,7 +23,7 @@ from vadana.connect import parse_recording_url, ConnectClient
 from vadana.slides import download_slides
 from vadana import whiteboard as wb_mod
 
-app = FastAPI(title="Vadana Extractor", version="2.1.4")
+app = FastAPI(title="Vadana Extractor", version="2.2.0")
 
 
 class ExtractRequest(BaseModel):
@@ -52,8 +52,9 @@ def extract(req: ExtractRequest):
     try:
         if req.kind == "whiteboard":
             zf = client.open_package(rec_id)
+            pdfs = download_slides(client, rec_id, os.path.join(out, "pdfs"), zf, exts={".pdf"}) or None
             pdf = os.path.join(out, f"{rec_id}_whiteboard.pdf")
-            if not wb_mod.make_pdf(zf, pdf):
+            if not wb_mod.make_pdf(zf, pdf, pdf_paths=pdfs):
                 raise HTTPException(404, "this recording has no whiteboard")
             return FileResponse(pdf, filename=os.path.basename(pdf), media_type="application/pdf")
 

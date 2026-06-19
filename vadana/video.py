@@ -13,13 +13,20 @@ def _blank(scale):
     return Image.new("RGB", (NATIVE_W * scale, NATIVE_H * scale), "white")
 
 def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
-                 max_fps: float = 4.0, progress=None) -> list[tuple[float, str]]:
+                 max_fps: float = 4.0, progress=None, backgrounds=None) -> list[tuple[float, str]]:
     """Render timed frames. Returns [(start_seconds, png_path), ...] in order.
 
+    backgrounds: {page_key: PIL image} of the shared PDF page the strokes sit on
+    (annotated-document recordings); a page with no background stays white.
     progress(done, total) is called as events are processed (for a progress bar)."""
     os.makedirs(frames_dir, exist_ok=True)
     W, H = NATIVE_W * scale, NATIVE_H * scale
     interval = 1000.0 / max_fps
+    backgrounds = backgrounds or {}
+
+    def fresh(page):
+        bg = backgrounds.get(page)
+        return bg.convert("RGB").resize((W, H), Image.LANCZOS) if bg is not None else _blank(scale)
 
     page_canvas: dict[int, Image.Image] = {}
     page_shapes: dict[int, dict] = {}
@@ -27,12 +34,12 @@ def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
 
     def ensure(page):
         if page not in page_canvas:
-            page_canvas[page] = _blank(scale)
+            page_canvas[page] = fresh(page)
             page_draw[page] = ImageDraw.Draw(page_canvas[page])
             page_shapes[page] = {}
 
     def repaint(page):
-        page_canvas[page] = _blank(scale)
+        page_canvas[page] = fresh(page)
         page_draw[page] = ImageDraw.Draw(page_canvas[page])
         for s in sorted(page_shapes[page].values(), key=lambda s: s.depth):
             wb_mod.draw_shape(page_draw[page], s, scale, W, H)
@@ -174,11 +181,15 @@ def _meta_seconds(zf, xml_name) -> float:
     m = re.search(r"onMetaData.*?<Number><!\[CDATA\[([\d.]+)\]\]>", d, re.S)
     return float(m.group(1)) if m else 0.0
 
-def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0, progress=None):
+def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0, progress=None,
+                    pdf_paths=None):
     """Mixed recording -> one 16:9 MP4 on the master timeline: the whiteboard
     (full length, rendered big then fitted so the handwriting is anti-aliased and
     legible) with the shared screen shown full-frame during its periods, and audio
-    placed at real offsets (gaps in the source mic = silence). None if neither."""
+    placed at real offsets (gaps in the source mic = silence). None if neither.
+
+    pdf_paths: shared PDFs; if one matches the board's page count, the strokes are
+    drawn over its pages (the professor annotated a document, not a blank board)."""
     from . import whiteboard as wb_mod
     from . import timeline as tl
     from PIL import Image
@@ -205,8 +216,10 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
     rep("render", 22)
     wb_frames = []
     if wb.pages:
+        backgrounds = wb_mod.pdf_backgrounds(pdf_paths, wb.pages)
         raw = build_frames(wb, os.path.join(work_dir, "frames"), scale=RENDER_SCALE, max_fps=max_fps,
-                           progress=lambda i, n: rep("render", 22 + int(28 * i / max(1, n))))
+                           progress=lambda i, n: rep("render", 22 + int(28 * i / max(1, n))),
+                           backgrounds=backgrounds)
         sheet_dir = os.path.join(work_dir, "wb16")
         os.makedirs(sheet_dir, exist_ok=True)
         nraw = len(raw) or 1

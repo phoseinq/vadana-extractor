@@ -28,7 +28,7 @@ It ships both as a **Telegram bot** (Persian, multi-user) and as a pair of stand
 **Key Features:**
 
 - 📄 **Original shared files** — downloads the untouched PDF / Word / PPT / any file a professor put in the Share pod (even when the download button was disabled)
-- 📝 **Whiteboard → PDF** — replays the board's timed vector events and renders every page to a clean PDF, with the strokes smoothed so shaky handwriting reads clearly
+- 📝 **Whiteboard → PDF** — replays the board's timed vector events and renders every page to a clean PDF, with the strokes smoothed so shaky handwriting reads clearly. If the professor drew on a shared PDF, that PDF page is kept **behind** the annotations (not a blank white page)
 - 🎬 **Synced archive video** — rebuilds the lecture on one master timeline: whiteboard **+** screen-share **+** the lecturer's audio, in sync
 - 🖼️ **Preview + details** — every file arrives with a thumbnail (first page / first video frame) and a short caption: recording id, date, size, and the class length for videos
 - 🤖 **Telegram bot** — students just send a recording link and pick what they want; colored inline buttons, a live progress bar, formal Persian UI, a "report a problem" button on every result
@@ -200,7 +200,7 @@ CI runs the suite (ruff + pytest on Python 3.11 & 3.12) on every push.
 **امکانات:**
 
 - 📄 **فایل‌های اشتراکیِ اصل** — دانلودِ PDF/Word/PPT یا هر فایلی که استاد توی Share pod گذاشته (حتی وقتی دکمهٔ دانلود غیرفعال بوده)
-- 📝 **وایت‌برد ← PDF** — بازپخشِ رویدادهای بُرداریِ تخته و رندرِ همهٔ صفحه‌ها به یه PDFِ تمیز، با خط‌هایی که صاف شده‌اند تا دست‌خطِ ناخوانا هم واضح در بیاید
+- 📝 **وایت‌برد ← PDF** — بازپخشِ رویدادهای بُرداریِ تخته و رندرِ همهٔ صفحه‌ها به یه PDFِ تمیز، با خط‌هایی که صاف شده‌اند تا دست‌خطِ ناخوانا هم واضح در بیاید. اگر استاد روی یک PDFِ اشتراکی نوشته باشد، همان صفحهٔ PDF **پشتِ** نوشته‌ها می‌ماند (نه صفحهٔ سفیدِ خالی)
 - 🎬 **ویدیوی همگامِ آرشیو** — بازسازیِ کلاس روی یه تایم‌لاینِ واحد: وایت‌برد **+** اشتراکِ صفحه **+** صدای استاد، همگام
 - 🖼️ **پیش‌نمایش و جزئیات** — هر فایل با یه تامبنیل (صفحهٔ اول / فریمِ اولِ ویدیو) و یه کپشنِ کوتاه می‌رسد: شناسهٔ کلاس، تاریخ، حجم، و برای ویدیو مدتِ کلاس
 - 🤖 **رباتِ تلگرام** — دانشجو فقط لینکِ ضبط رو می‌فرسته و انتخاب می‌کنه؛ دکمه‌های رنگی، نوارِ پیشرفتِ زنده، رابطِ رسمیِ فارسی، و دکمهٔ «گزارشِ مشکل» زیرِ هر خروجی

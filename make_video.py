@@ -17,11 +17,12 @@ except Exception:
 def load_package(args):
     if args.package:
         rec_id = os.path.splitext(os.path.basename(args.package))[0]
-        return zipfile.ZipFile(args.package), rec_id
+        return zipfile.ZipFile(args.package), rec_id, None
     rec = parse_recording_url(args.url)
     print(f"[*] downloading package {rec.rec_id} ...")
     proxy = os.environ.get("IRAN_PROXY") or None
-    return ConnectClient(rec.host, rec.token, proxy=proxy).open_package(rec.rec_id), rec.rec_id
+    client = ConnectClient(rec.host, rec.token, proxy=proxy)
+    return client.open_package(rec.rec_id), rec.rec_id, client
 
 def main():
     ap = argparse.ArgumentParser()
@@ -36,10 +37,15 @@ def main():
     if not args.url and not args.package:
         ap.error("give a recording URL or --package <file.zip>")
 
-    zf, rec_id = load_package(args)
+    zf, rec_id, client = load_package(args)
     out_dir = "out"
     work = os.path.join(out_dir, "_work", rec_id)
     os.makedirs(work, exist_ok=True)
+
+    pdfs = None
+    if client:
+        from vadana.slides import download_slides
+        pdfs = download_slides(client, rec_id, os.path.join(work, "pdfs"), zf, exts={".pdf"}) or None
 
     print("[*] parsing whiteboard ...")
     wb = wb_mod.load_from_package(zf)
@@ -52,7 +58,7 @@ def main():
             return
         out = args.out or os.path.join(out_dir, f"{rec_id}_whiteboard.pdf")
         os.makedirs(out_dir, exist_ok=True)
-        imgs = wb_mod.render_final_pages(wb, args.scale)
+        imgs = wb_mod.render_final_pages(wb, args.scale, wb_mod.pdf_backgrounds(pdfs, wb.pages))
         wb_mod.save_pdf(imgs, out)
         print(f"[+] {len(imgs)} pages -> {out}")
         return
@@ -64,7 +70,8 @@ def main():
     os.makedirs(out_dir, exist_ok=True)
     print("[*] building synced video (whiteboard + screen-share + audio) ...")
     res = video_mod.make_full_video(zf, work, out, args.scale, args.fps,
-                                    progress=lambda s, p: print(f"\r    {s}  {p:3.0f}%   ", end="", flush=True))
+                                    progress=lambda s, p: print(f"\r    {s}  {p:3.0f}%   ", end="", flush=True),
+                                    pdf_paths=pdfs)
     print()
     if not res:
         print("[!] nothing to build (no whiteboard and no screen-share).")

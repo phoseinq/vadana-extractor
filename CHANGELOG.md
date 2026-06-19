@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.2.0
++ **Annotated PDFs**: when the professor draws on a shared PDF, the whiteboard PDF and the video now show the PDF page behind the strokes (matched 1:1 by page count) instead of the annotations floating on a blank white page
+
 ## v2.1.4
 + When a job fails (e.g. a recording that needs login), the error now replaces the live progress message in place and the progress stops — no more leftover "0% در حال دریافت…" bar with the error as a separate message
 

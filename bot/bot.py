@@ -671,7 +671,9 @@ async def do_whiteboard(m, rec, uid):
             zf = await asyncio.to_thread(client.open_package, rec.rec_id,
                                          lambda g, t: prog.set(L_FETCH, (g / t * 72) if t else 35))
             prog.set(L_WB_RENDER, 80)
-            result = await asyncio.to_thread(wb_mod.make_pdf, zf, tmp, 2, thumb)
+            pdfs = await asyncio.to_thread(download_slides, client, rec.rec_id,
+                                           os.path.join(work, "pdfs"), zf, None, {".pdf"})
+            result = await asyncio.to_thread(wb_mod.make_pdf, zf, tmp, 2, thumb, pdfs or None)
         stop.set(); await poller
         if result is None:
             await status.edit_text("ℹ️ این ضبط، وایت‌برد نداشت.\n"
@@ -729,14 +731,12 @@ async def do_video(m, rec, uid):
             zf = await asyncio.to_thread(client.open_package, rec.rec_id,
                                          lambda g, t: prog.set(L_FETCH, (g / t * 30) if t else 15))
             prog.set(STAGE["parse"], 32)
+            sl = os.path.join(work, "pdfs")
+            pdfs = await asyncio.to_thread(download_slides, client, rec.rec_id, sl, zf, None, {".pdf"})
             result = await asyncio.to_thread(video_mod.make_full_video, zf, work, tmp_out, 2, 4.0,
-                                             lambda s, p: prog.set(STAGE.get(s, s), 32 + p * 0.6))
+                                             lambda s, p: prog.set(STAGE.get(s, s), 32 + p * 0.6),
+                                             pdfs or None)
             if result is None:
-                prog.set(L_FETCH_SLIDES, 35)
-                sl = os.path.join(work, "pdfs")
-                pdfs = await asyncio.to_thread(download_slides, client, rec.rec_id, sl, zf,
-                                               lambda i, t: prog.set(L_FETCH_SLIDES, 35 + i / t * 15),
-                                               {".pdf"})
                 result = await asyncio.to_thread(video_mod.make_media_video, zf, work, tmp_out, pdfs or None, 2,
                                                  lambda s, p: prog.set(STAGE_MEDIA.get(s, s), 52 + p * 0.45))
         stop.set(); await poller
