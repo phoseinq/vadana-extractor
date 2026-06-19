@@ -21,15 +21,16 @@
 
 ### 📖 Description
 
-**Vadana Extractor** recovers study material from Adobe Connect ("Vadana", `vadavc30.ec.iau.ir`) class recordings — straight from each recording's own offline package, using your own session. The slides you can see but not download, the whiteboard that disappears when you close the tab, the recordings stuck in an old Flash-style player — it pulls all of it back out.
+**Vadana Extractor** recovers study material from Adobe Connect ("Vadana") class recordings — straight from each recording's own offline package. It works with every IAU branch: the host is `vada<something><number>.ec.iau.ir` and the city code changes per branch (`vadavc30`, `vadana14`, `vadana36`, …), so paste any of them. Most recordings open directly; only some need you to be logged in. The slides you can see but not download, the whiteboard, and recordings stuck in an old Flash-style player — it pulls all of it back out.
 
 It ships both as a **Telegram bot** (Persian, multi-user) and as a pair of standalone **CLI tools**.
 
 **Key Features:**
 
 - 📄 **Original shared files** — downloads the untouched PDF / Word / PPT / any file a professor put in the Share pod (even when the download button was disabled)
-- 📝 **Whiteboard → PDF** — replays the board's timed vector events and renders every page to a clean PDF
+- 📝 **Whiteboard → PDF** — replays the board's timed vector events and renders every page to a clean PDF, with the strokes smoothed so shaky handwriting reads clearly
 - 🎬 **Synced archive video** — rebuilds the lecture on one master timeline: whiteboard **+** screen-share **+** the lecturer's audio, in sync
+- 🖼️ **Preview + details** — every file arrives with a thumbnail (first page / first video frame) and a short caption: recording id, date, size, and the class length for videos
 - 🤖 **Telegram bot** — students just send a recording link and pick what they want; colored inline buttons, a live progress bar, formal Persian UI, a "report a problem" button on every result
 - 🇮🇷 **Works anywhere** — runs locally or on an Iran server with no proxy; add a reverse proxy only when you host it abroad
 - 🗃️ **Telegram-backed cache** — each result is uploaded once to a private channel and re-sent instantly by `file_id` (nothing kept on disk)
@@ -43,7 +44,7 @@ It ships both as a **Telegram bot** (Persian, multi-user) and as a pair of stand
 - Python **3.11–3.13** (Pillow text rendering can crash on 3.14 alpha)
 - `ffmpeg` + `ffprobe` on `PATH` (only for whiteboard → video)
 - A Telegram Bot Token from [@BotFather](https://t.me/BotFather) — bot mode only
-- A proxy is **not** needed on a personal machine or an Iran server — only when you run on a server abroad (a reverse proxy that reaches `vadavc30.ec.iau.ir`)
+- A proxy is **not** needed on a personal machine or an Iran server — only when you run on a server abroad (a reverse proxy that reaches your branch's host, e.g. `vadavc30.ec.iau.ir`)
 
 ---
 
@@ -66,7 +67,7 @@ Inside Iran you don't need a proxy — it reaches Vadana directly. Now run the t
 **1. Download the original shared files**
 
 ```bash
-python download_slides.py "https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true"
+python download_slides.py "https://vadavc30.ec.iau.ir/<id>/"
 ```
 
 **2. Whiteboard → synced MP4** — add `--pages-only` for just the board pages as a PDF:
@@ -76,7 +77,7 @@ python make_video.py "<url>"
 python make_video.py "<url>" --pages-only
 ```
 
-The session token is the `session=` value in the live recording URL; it expires quickly, so grab a fresh link right before running.
+Most recordings open directly, so the plain link is enough. If a recording asks you to log in, copy the full link including its `session=` value (it expires fast, so grab a fresh one right before running).
 
 ---
 
@@ -192,15 +193,16 @@ CI runs the suite (ruff + pytest on Python 3.11 & 3.12) on every push.
 
 ### 📖 معرفی
 
-**Vadana Extractor** جزوه و محتوای درسی را از ضبط‌های کلاسِ ادوبی کانکت («وادانا»، `vadavc30.ec.iau.ir`) بیرون می‌کشد — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط و با سشنِ خودتان. اسلایدهایی که می‌بینید ولی دانلود نمی‌شوند، وایت‌بردی که با بستنِ تب از بین می‌رود، و ضبط‌هایی که فقط در یک پلیرِ قدیمیِ فلش باز می‌شوند — همه را بیرون می‌کشد.
+**Vadana Extractor** جزوه و محتوای درسی را از ضبط‌های کلاسِ ادوبی کانکت («وادانا») بیرون می‌کشد — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط. با همهٔ شعبه‌های دانشگاه آزاد کار می‌کند: آدرس به‌شکلِ `vada…<عدد>.ec.iau.ir` است و کدِ شهر در هر شعبه فرق می‌کند (`vadavc30`، `vadana14`، `vadana36`، …)، پس هرکدام را بفرستی قبول می‌کند. بیشترِ ضبط‌ها مستقیم باز می‌شوند؛ فقط بعضی‌ها به ورود نیاز دارند. اسلایدهایی که می‌بینید ولی دانلود نمی‌شوند، وایت‌برد، و ضبط‌هایی که فقط در یک پلیرِ قدیمیِ فلش باز می‌شوند — همه را بیرون می‌کشد.
 
 هم به‌صورتِ **رباتِ تلگرام** (فارسی، چندکاربره) عرضه می‌شود و هم دو **ابزارِ خط‌فرمان**.
 
 **امکانات:**
 
 - 📄 **فایل‌های اشتراکیِ اصل** — دانلودِ PDF/Word/PPT یا هر فایلی که استاد توی Share pod گذاشته (حتی وقتی دکمهٔ دانلود غیرفعال بوده)
-- 📝 **وایت‌برد ← PDF** — بازپخشِ رویدادهای بُرداریِ تخته و رندرِ همهٔ صفحه‌ها به یه PDFِ تمیز
+- 📝 **وایت‌برد ← PDF** — بازپخشِ رویدادهای بُرداریِ تخته و رندرِ همهٔ صفحه‌ها به یه PDFِ تمیز، با خط‌هایی که صاف شده‌اند تا دست‌خطِ ناخوانا هم واضح در بیاید
 - 🎬 **ویدیوی همگامِ آرشیو** — بازسازیِ کلاس روی یه تایم‌لاینِ واحد: وایت‌برد **+** اشتراکِ صفحه **+** صدای استاد، همگام
+- 🖼️ **پیش‌نمایش و جزئیات** — هر فایل با یه تامبنیل (صفحهٔ اول / فریمِ اولِ ویدیو) و یه کپشنِ کوتاه می‌رسد: شناسهٔ کلاس، تاریخ، حجم، و برای ویدیو مدتِ کلاس
 - 🤖 **رباتِ تلگرام** — دانشجو فقط لینکِ ضبط رو می‌فرسته و انتخاب می‌کنه؛ دکمه‌های رنگی، نوارِ پیشرفتِ زنده، رابطِ رسمیِ فارسی، و دکمهٔ «گزارشِ مشکل» زیرِ هر خروجی
 - 🇮🇷 **همه‌جا کار می‌کنه** — روی سیستمِ شخصی یا سرورِ ایران بدونِ پروکسی؛ پروکسیِ ریورس فقط وقتی لازمه که روی سرورِ خارج اجراش کنی
 - 🗃️ **کشِ مبتنی‌بر تلگرام** — هر خروجی یک‌بار توی یه چنلِ خصوصی آپلود و دفعهٔ بعد با `file_id` فوری ارسال می‌شه
@@ -214,7 +216,7 @@ CI runs the suite (ruff + pytest on Python 3.11 & 3.12) on every push.
 - پایتون **۳.۱۱ تا ۳.۱۳** (رندرِ متنِ Pillow روی ۳.۱۴ آلفا کرش می‌کنه)
 - `ffmpeg` و `ffprobe` روی `PATH` (فقط برای ویدیوسازی)
 - توکنِ رباتِ تلگرام از [@BotFather](https://t.me/BotFather) — فقط حالتِ ربات
-- روی سیستمِ شخصی یا سرورِ ایران **پروکسی لازم نیست**؛ فقط روی سرورِ خارج یه پروکسیِ ریورس می‌خوای که به `vadavc30.ec.iau.ir` برسه
+- روی سیستمِ شخصی یا سرورِ ایران **پروکسی لازم نیست**؛ فقط روی سرورِ خارج یه پروکسیِ ریورس می‌خوای که به آدرسِ شعبهٔ خودت برسه (مثلِ `vadavc30.ec.iau.ir`)
 
 ---
 
@@ -239,7 +241,7 @@ pip install -r requirements.txt
 **۱) دانلودِ فایل‌های اشتراکیِ اصل:**
 
 ```bash
-python download_slides.py "https://vadavc30.ec.iau.ir/<id>/?session=...&proto=true"
+python download_slides.py "https://vadavc30.ec.iau.ir/<id>/"
 ```
 
 **۲) وایت‌برد ← ویدیوی همگام** — با `--pages-only` فقط صفحه‌های تخته به PDF می‌شه:
@@ -249,7 +251,7 @@ python make_video.py "<url>"
 python make_video.py "<url>" --pages-only
 ```
 
-توکنِ سشن همون مقدارِ `session=` توی لینکِ زندهٔ ضبطه؛ زود منقضی می‌شه، پس درست قبلِ اجرا یه لینکِ تازه بگیر.
+بیشترِ ضبط‌ها مستقیم باز می‌شوند و همین لینکِ ساده کافی است. اگر ضبطی به ورود نیاز داشت، لینکِ کامل همراه با مقدارِ `session=` را کپی کن (زود منقضی می‌شود، پس درست قبلِ اجرا یه لینکِ تازه بگیر).
 
 ---
 

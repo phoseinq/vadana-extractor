@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.0.0
++ Works with every IAU branch host, not just `vadavc30` — `vadavc30`, `vadana14` (Zanjan), `vadana36`, and the rest. Links from other branches no longer get ignored.
++ The session is now optional — recordings that open directly (most older terms) download without a `?session=`; you're only asked to log in when one actually needs it
++ Smoother whiteboard strokes — sparse, shaky handwriting renders as clean curves instead of crooked segments
++ Sent files carry a thumbnail (first page / first video frame) and a short details caption: recording id, date, size, and class length for videos
+
 ## v1.5.3
 + One-line installer (`install.sh` self-clones the repo)
 + Windows setup steps in the README
