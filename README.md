@@ -58,7 +58,7 @@ pip install -r requirements.txt
 ```
 
 ```bash
-python download_slides.py "https://vadavc30.ec.iau.ir/<id>/"   # shared files
+python download_slides.py "https://<branch>.ec.iau.ir/<id>/"   # shared files
 python make_video.py "<url>"                                   # synced video
 python make_video.py "<url>" --pages-only                      # board pages as a PDF
 ```
@@ -154,7 +154,7 @@ pip install -r requirements.txt
 ```
 
 ```bash
-python download_slides.py "https://vadavc30.ec.iau.ir/<id>/"   # فایل‌های اشتراکی
+python download_slides.py "https://<branch>.ec.iau.ir/<id>/"   # فایل‌های اشتراکی
 python make_video.py "<url>"                                   # ویدیوی همگام
 python make_video.py "<url>" --pages-only                      # فقط صفحه‌های تخته (PDF)
 ```
