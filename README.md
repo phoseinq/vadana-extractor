@@ -91,6 +91,7 @@ Then fill in `bot/.env` (run `vadana env`, or edit it for Docker) and start. The
 | `ADMINS` | comma-separated user ids allowed to build videos |
 | `STORAGE_CHANNEL` | private channel id used as a file cache (bot must be admin) |
 | `ALLOW_VIDEO` | `1` = everyone can build videos; `0` = admin-only |
+| `AUDIO_DENOISE` | speech cleanup on the video audio — a custom ffmpeg filter chain, or empty to turn it off (on by default) |
 
 ### The `vadana` command
 
@@ -212,6 +213,7 @@ curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/inst
 | `ADMINS` | آی‌دیِ کاربرها (با کاما) که اجازهٔ ساختِ ویدیو دارند |
 | `STORAGE_CHANNEL` | آی‌دیِ چنلِ خصوصی برای کشِ فایل‌ها (ربات باید ادمین باشد) |
 | `ALLOW_VIDEO` | `۱` = ساختِ ویدیو برای همه؛ `۰` = فقط ادمین |
+| `AUDIO_DENOISE` | نویزگیریِ صدای ویدیو — یک زنجیرهٔ فیلترِ ffmpeg دلخواه، یا خالی برای خاموش‌کردن (پیش‌فرض روشن) |
 
 ### دستورِ `vadana`
 
