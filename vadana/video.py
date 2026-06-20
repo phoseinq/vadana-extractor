@@ -9,6 +9,8 @@ from PIL import Image, ImageDraw
 from . import whiteboard as wb_mod
 from .whiteboard import Whiteboard, NATIVE_W, NATIVE_H
 
+DENOISE_AF = os.environ.get("AUDIO_DENOISE", "highpass=f=85,afftdn=nr=12:nf=-25,dynaudnorm=f=200:g=6")
+
 def _blank(scale):
     return Image.new("RGB", (NATIVE_W * scale, NATIVE_H * scale), "white")
 
@@ -306,6 +308,8 @@ def _mux_timed(frames, audio_path, out_path, workdir, master_s, progress=None):
             "-t", f"{master_s:.3f}"]
     if audio_path:
         cmd += ["-c:a", "aac", "-b:a", "96k"]
+        if DENOISE_AF:
+            cmd += ["-af", DENOISE_AF]
     cmd += [out_path]
     with open(os.path.join(workdir, "ffmpeg.err"), "w") as errf:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=errf, text=True)
@@ -348,6 +352,8 @@ def mux(frames, audio_path, out_path, workdir, audio_skip_seconds=0.0, audio_off
         cmd += ["-r", str(out_fps)]
     if audio_path:
         cmd += ["-c:a", "aac", "-b:a", "96k", "-shortest"]
+        if DENOISE_AF:
+            cmd += ["-af", DENOISE_AF]
     cmd += [out_path]
 
     with open(os.path.join(workdir, "ffmpeg.err"), "w") as errf:

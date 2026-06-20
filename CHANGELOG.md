@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.5.0
++ Video audio gets a speech-cleanup pass — a high-pass to cut low rumble, an FFT denoiser for steady background hiss/hum, then level-evening so a quiet professor and a louder student sit closer. On by default; tune the ffmpeg chain or turn it off with the `AUDIO_DENOISE` env var.
+
 ## v2.4.1
 + README: an architecture section for contributors — the concurrency model, the two semaphores (downloads vs. video builds), and what happens when two people build a video at the same time.
 
