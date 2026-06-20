@@ -108,6 +108,25 @@ Then fill in `bot/.env` (run `vadana env`, or edit it for Docker) and start. The
 
 Each recording exposes an offline ZIP at `/<id>/output/<id>.zip`. Shared documents come from `downloadUrl`s in `mainstream.xml`; the whiteboard is timed vector events in `ftcontent*.xml`, replayed to redraw the board; audio and screen-share are placed on the master timeline from `indexstream.xml` and muxed with FFmpeg.
 
+### Architecture (for contributors)
+
+The bot is one `aiogram` event loop. Every heavy step (download, whiteboard render, FFmpeg) runs in a worker thread via `asyncio.to_thread`, so the loop itself never blocks and stays responsive to other users.
+
+**One job per user.** Each request becomes an `asyncio.Task` tracked in `ACTIVE_TASKS[uid]`; sending a second link while one is running is refused ("wait, or press Cancel"). Cancel sets an `asyncio.Event` the job polls, so it stops cleanly and frees its slot.
+
+**Two semaphores cap the whole server** (not per-user):
+
+- `SLIDES_SEM = Semaphore(MAX_CONCURRENT)` — default **3** — file / whiteboard downloads.
+- `VIDEO_SEM = Semaphore(MAX_VIDEO_CONCURRENT)` — default **1** — video builds, which are the expensive ones (render + encode).
+
+**Two people build a video at the same time:** the first `async with VIDEO_SEM:` takes the only slot and runs. The second sees `VIDEO_SEM.locked()`, switches its status message to "another video is building — yours starts next", and `await`s the semaphore. asyncio wakes waiters in arrival order, so it behaves as a FIFO queue — nobody is dropped, they just wait their turn. On a bigger box, raise `MAX_VIDEO_CONCURRENT`.
+
+**Rate limits & anti-spam:** a per-user cooldown (`USER_COOLDOWN`, 15 s between requests) and a daily video quota (`MAX_VIDEO_PER_DAY`, 3 for non-admins, tracked in memory per day). A `ThrottleMiddleware` (outer middleware, ~10 updates per 8 s sliding window) drops floods *before* any handler or work runs; admins are exempt.
+
+**Caching skips all of the above.** Every finished result is uploaded once to a storage channel and its Telegram `file_id` saved in `store.json`; a repeat request resends instantly from there — it never takes a semaphore or touches the source server.
+
+Where to look: `bot/bot.py` (handlers, the two semaphores, the live-progress poller), `vadana/connect.py` (auth + package download), `vadana/whiteboard.py` + `vadana/video.py` (reconstruction), `vadana/slides.py` (shared files).
+
 ### HTTP API (optional)
 
 ```bash
