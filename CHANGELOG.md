@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.4.1
++ README: an architecture section for contributors — the concurrency model, the two semaphores (downloads vs. video builds), and what happens when two people build a video at the same time.
+
 ## v2.4.0
 + Works with any Adobe Connect server now, not just IAU "Vadana". Send the full recording link from any Connect host — the input filter accepts any public host (and still blocks internal/private addresses, so the SSRF guard is intact) and the package layout is the standard Connect format.
 + Docker support: a `Dockerfile` + `docker-compose.yml`. One installer command (`curl … | bash`) that asks Docker or native, fills `bot/.env`, and starts the bot.
