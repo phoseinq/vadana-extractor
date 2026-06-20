@@ -1,0 +1,16 @@
+# keep the build context small and never bake secrets / runtime junk into the image
+.git
+.github
+tests
+assets
+docs
+*.md
+**/__pycache__
+*.pyc
+.pytest_cache
+venv
+bot/.env
+bot_work
+cache
+logs
+out

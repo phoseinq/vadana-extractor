@@ -17,9 +17,9 @@ dl() {
   ( cd "$DIR" || exit 1
     set -a; [ -f "$ENVF" ] && . "$ENVF"; set +a   # picks up IRAN_PROXY when hosting abroad
     case "$type" in
-      files)      "$PY" download_slides.py "$url" ;;
-      whiteboard) "$PY" make_video.py "$url" --pages-only ;;
-      video)      "$PY" make_video.py "$url" ;;
+      files)      "$PY" cli/download_slides.py "$url" ;;
+      whiteboard) "$PY" cli/make_video.py "$url" --pages-only ;;
+      video)      "$PY" cli/make_video.py "$url" ;;
     esac )
 }
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import ipaddress
 import re
 import time
 import zipfile
@@ -12,16 +13,30 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-_HOST_RE = re.compile(r"\.ec\.iau\.ir(?::\d+)?$")
+_DOMAIN_RE = re.compile(r"[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+")
+
+def _public_host(host: str) -> bool:
+    """True only for a routable public domain or IP. Blocks localhost and private /
+    reserved / loopback / link-local ranges, so a crafted link can never make the
+    server reach internal services (SSRF)."""
+    if not host or host.lower() == "localhost" or host.endswith((".local", ".internal", ".lan")):
+        return False
+    try:
+        return ipaddress.ip_address(host).is_global
+    except ValueError:
+        return bool(_DOMAIN_RE.fullmatch(host))
 
 def is_valid_recording(rec: "Recording") -> bool:
-    """The input filter for every entry point (bot, API, CLIs). The host must be an
-    IAU branch under ec.iau.ir, the recording id alphanumeric, and the session token
-    (optional) alphanumeric — so a crafted link can't smuggle a different host
-    (SSRF), a traversal path, or URL/header tricks through the session value."""
+    """The input filter for every entry point (bot, API, CLIs). Accepts any Adobe
+    Connect host — it isn't tied to IAU/Vadana — but the host must be a *public*
+    domain/IP (never an internal address: SSRF), and the recording id and session
+    token must be alphanumeric (no path-traversal or URL/header tricks)."""
+    u = urlparse(rec.host or "")
+    if u.scheme not in ("http", "https"):
+        return False
     return bool(
-        _HOST_RE.search(rec.host or "")
-        and re.fullmatch(r"[a-z0-9]+", rec.rec_id or "")
+        _public_host(u.hostname or "")
+        and re.fullmatch(r"[A-Za-z0-9_-]+", rec.rec_id or "")
         and re.fullmatch(r"[A-Za-z0-9]*", rec.token or "")
     )
 

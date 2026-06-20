@@ -1,0 +1,13 @@
+# Vadana Extractor bot.  Fill bot/.env first, then:  docker compose up -d --build
+services:
+  bot:
+    build: .
+    image: vadana-extractor
+    container_name: vadana-bot
+    env_file: bot/.env
+    volumes:
+      - cache:/app/cache          # persist the Telegram file-id cache across restarts
+    restart: unless-stopped
+
+volumes:
+  cache:

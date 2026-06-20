@@ -4,6 +4,7 @@ import os
 import sys
 import zipfile
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from vadana.connect import parse_recording_url, ConnectClient, is_valid_recording
 from vadana import whiteboard as wb_mod
 from vadana import audio as audio_mod
@@ -56,7 +57,7 @@ def main():
 
     if args.pages_only:
         if not wb.pages:
-            print("[!] no whiteboard content (maybe shared documents — use download_slides.py).")
+            print("[!] no whiteboard content (maybe shared documents — use cli/download_slides.py).")
             return
         out = args.out or os.path.join(out_dir, f"{rec_id}_whiteboard.pdf")
         os.makedirs(out_dir, exist_ok=True)

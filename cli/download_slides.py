@@ -2,6 +2,7 @@
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from vadana.connect import parse_recording_url, ConnectClient, is_valid_recording
 from vadana.slides import download_slides
 

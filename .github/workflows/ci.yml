@@ -30,4 +30,4 @@ jobs:
         run: pytest -q
 
       - name: Byte-compile
-        run: python -m compileall vadana bot download_slides.py make_video.py
+        run: python -m compileall vadana bot cli

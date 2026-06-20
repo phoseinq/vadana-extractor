@@ -5,14 +5,23 @@ from vadana.slides import find_shared_files, category_of, _safe_name
 
 
 def test_is_valid_recording_filters_inputs():
-    ok = "https://vadavc30.ec.iau.ir/abc123/?session=tok9"
-    assert is_valid_recording(parse_recording_url(ok))
-    assert is_valid_recording(parse_recording_url("https://vadana14.ec.iau.ir/xyz/"))   # session optional
+    ok = [
+        "https://vadavc30.ec.iau.ir/abc123/?session=tok9",    # IAU Vadana
+        "https://vadana14.ec.iau.ir/xyz/",                    # session optional
+        "https://connect.example.edu/meeting42/?session=t",   # any other Adobe Connect host
+        "https://8.8.8.8/rec1/",                              # a public IP literal is fine
+    ]
+    for u in ok:
+        assert is_valid_recording(parse_recording_url(u)), u
     bad = [
-        "https://evil.com/abc/?session=x",                         # off-host (SSRF)
-        "https://ec.iau.ir.attacker.com/abc/",                     # suffix trick
-        "https://vadavc30.ec.iau.ir/p/4042/login/index.php",       # rec_id has a dot
-        "https://vadavc30.ec.iau.ir/abc/?session=a%0d%0ab",        # CRLF in the token
+        "https://localhost/abc/",                             # internal host (SSRF)
+        "https://127.0.0.1/abc/",                             # loopback (SSRF)
+        "https://192.168.1.10/abc/?session=x",                # private LAN (SSRF)
+        "https://10.0.0.5/abc/",                              # private (SSRF)
+        "https://server.internal/abc/",                       # internal-only suffix (SSRF)
+        "ftp://example.com/abc/",                             # non-http scheme
+        "https://host.tld/p/4042/login.php",                  # rec_id has a dot
+        "https://host.tld/abc/?session=a%0d%0ab",             # CRLF in the token
     ]
     for u in bad:
         assert not is_valid_recording(parse_recording_url(u)), u

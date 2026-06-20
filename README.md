@@ -2,14 +2,15 @@
 
 # 🎓 Vadana Extractor
 
+[![Adobe Connect](https://img.shields.io/badge/Adobe%20Connect-FF0000?style=for-the-badge&logo=adobe&logoColor=white)](https://www.adobe.com/products/adobeconnect.html)
 [![CI](https://github.com/phoseinq/vadana-extractor/actions/workflows/ci.yml/badge.svg)](https://github.com/phoseinq/vadana-extractor/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-3.11+-blue?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![Telegram](https://img.shields.io/badge/Telegram-Bot-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://core.telegram.org/bots)
 [![FFmpeg](https://img.shields.io/badge/FFmpeg-required-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)](https://ffmpeg.org)
 [![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)](LICENSE)
 
-**Recover slides, whiteboard & a synced video from IAU "Vadana" (Adobe Connect) class recordings**
-**بازیابیِ اسلاید، وایت‌برد و ویدیوی همگام از ضبط‌های کلاسِ «وادانا» (ادوبی کانکت)**
+**Recover slides, whiteboard & a synced video from any Adobe Connect recording — IAU "Vadana" included**
+**بازیابیِ اسلاید، وایت‌برد و ویدیوی همگام از هر ضبطِ ادوبی کانکت — از جمله «وادانا»ی دانشگاه آزاد**
 
 ### ▶️ Try the live bot — [@iau_archive_Bot](https://t.me/iau_archive_Bot)
 
@@ -29,7 +30,7 @@
 
 ### What it does
 
-Pulls study material out of Adobe Connect ("Vadana") class recordings — straight from each recording's own offline package. Works with every IAU branch (`vadavc30`, `vadana14`, `vadana36`, … — the city code changes per branch). Most recordings open directly; some need a login.
+Pulls study material out of any Adobe Connect recording — straight from the recording's own offline package. It was built for IAU's "Vadana" servers (works with every branch — `vadavc30`, `vadana14`, `vadana36`, …), but that package layout is standard Adobe Connect, so any server works: just paste the full recording link. Most recordings open directly; some need a login.
 
 It comes as a **Telegram bot** ([@iau_archive_Bot](https://t.me/iau_archive_Bot)) and two **CLI tools**.
 
@@ -39,6 +40,14 @@ It comes as a **Telegram bot** ([@iau_archive_Bot](https://t.me/iau_archive_Bot)
 - 🖼️ **Preview + details** — each file arrives with a thumbnail and a short caption (id, date, size, length).
 - 🤖 **Telegram bot** — send a link, pick what you want; live progress, Persian UI, a retry button.
 - 🇮🇷 **Runs anywhere** — locally or on an Iran server with no proxy; a reverse proxy only when hosted abroad.
+
+**Example** — one recording link, three possible outputs:
+
+| You send | You get back |
+| :-- | :-- |
+| a link + 📄 **files** | the original slide PDFs (`Chapter 1.pdf`, `notes.docx`, …) |
+| a link + 📝 **whiteboard** | one PDF of the board — the professor's notes laid over the slides |
+| a link + 🎬 **video** | an MP4: whiteboard + screen-share + audio, page-synced |
 
 ### Requirements
 
@@ -58,24 +67,22 @@ pip install -r requirements.txt
 ```
 
 ```bash
-python download_slides.py "https://<branch>.ec.iau.ir/<id>/"   # shared files
-python make_video.py "<url>"                                   # synced video
-python make_video.py "<url>" --pages-only                      # board pages as a PDF
+python cli/download_slides.py "https://<connect-host>/<id>/"   # shared files
+python cli/make_video.py "<url>"                               # synced video
+python cli/make_video.py "<url>" --pages-only                  # board pages as a PDF
 ```
 
 The plain link is usually enough. If a recording asks you to log in, copy the full link including its `session=` value (it expires fast).
 
 ### Bot setup
 
+One command on the server. It asks Docker or native, installs everything (ffmpeg, the dependencies, the systemd service, the `vadana` command), then prints the next step.
+
 ```bash
-git clone https://github.com/phoseinq/vadana-extractor.git /opt/vadana-extractor
-cd /opt/vadana-extractor
-bash install.sh
-vadana env          # edit the config below, then it restarts
-systemctl enable --now vadana-bot
+curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/install.sh | bash
 ```
 
-`install.sh` sets up ffmpeg, a virtualenv, the dependencies, the systemd service and the `vadana` command.
+Then fill in `bot/.env` (run `vadana env`, or edit it for Docker) and start. The settings:
 
 | Variable | Meaning |
 | :-- | :-- |
@@ -105,7 +112,7 @@ Each recording exposes an offline ZIP at `/<id>/output/<id>.zip`. Shared documen
 
 ```bash
 pip install -r requirements-api.txt
-uvicorn api:app --host 0.0.0.0 --port 8000
+uvicorn cli.api:app --host 0.0.0.0 --port 8000
 ```
 
 `POST /extract` with `{"url": "...", "kind": "files"}` returns a zip of the shared files (or `"kind": "whiteboard"` for the board PDF).
@@ -125,7 +132,7 @@ pytest
 
 ### چه‌کار می‌کند
 
-جزوه و محتوای درسی را از ضبط‌های کلاسِ ادوبی کانکت («وادانا») بیرون می‌کشد — مستقیم از پکیجِ آفلاینِ خودِ هر ضبط. با همهٔ شعبه‌های دانشگاه آزاد کار می‌کند (`vadavc30`، `vadana14`، `vadana36`، … — کدِ شهر در هر شعبه فرق می‌کند). بیشترِ ضبط‌ها مستقیم باز می‌شوند؛ بعضی‌ها به ورود نیاز دارند.
+جزوه و محتوای درسی را از هر ضبطِ ادوبی کانکت بیرون می‌کشد — مستقیم از پکیجِ آفلاینِ خودِ ضبط. برای سرورهای «وادانا»ی دانشگاه آزاد ساخته شده (با همهٔ شعبه‌ها کار می‌کند — `vadavc30`، `vadana14`، `vadana36`، …)، ولی این ساختارِ پکیج استانداردِ ادوبی کانکت است، پس روی هر سروری کار می‌کند: فقط لینکِ کاملِ ضبط را بفرست. بیشترِ ضبط‌ها مستقیم باز می‌شوند؛ بعضی‌ها به ورود نیاز دارند.
 
 هم رباتِ تلگرام است ([@iau_archive_Bot](https://t.me/iau_archive_Bot))، هم دو ابزارِ خط‌فرمان.
 
@@ -135,6 +142,14 @@ pytest
 - 🖼️ **پیش‌نمایش و جزئیات** — هر فایل با تامبنیل و یک کپشنِ کوتاه می‌رسد (شناسه، تاریخ، حجم، مدت).
 - 🤖 **رباتِ تلگرام** — لینک را بفرست و انتخاب کن؛ نوارِ پیشرفتِ زنده، رابطِ فارسی، دکمهٔ تلاش مجدد.
 - 🇮🇷 **همه‌جا کار می‌کند** — روی سیستمِ شخصی یا سرورِ ایران بدونِ پروکسی؛ پروکسیِ ریورس فقط روی سرورِ خارج.
+
+**نمونه** — یک لینکِ ضبط، سه خروجیِ ممکن:
+
+| می‌فرستی | می‌گیری |
+| :-- | :-- |
+| لینک + 📄 **فایل‌ها** | همان PDFهای اصلِ اسلاید (`Chapter 1.pdf`، …) |
+| لینک + 📝 **وایت‌برد** | یک PDF از تخته — نوشته‌های استاد روی اسلایدها |
+| لینک + 🎬 **ویدیو** | یک MP4: وایت‌برد + اشتراکِ صفحه + صدا، هماهنگ با صفحه‌ها |
 
 ### پیش‌نیازها
 
@@ -154,24 +169,22 @@ pip install -r requirements.txt
 ```
 
 ```bash
-python download_slides.py "https://<branch>.ec.iau.ir/<id>/"   # فایل‌های اشتراکی
-python make_video.py "<url>"                                   # ویدیوی همگام
-python make_video.py "<url>" --pages-only                      # فقط صفحه‌های تخته (PDF)
+python cli/download_slides.py "https://<connect-host>/<id>/"   # فایل‌های اشتراکی
+python cli/make_video.py "<url>"                               # ویدیوی همگام
+python cli/make_video.py "<url>" --pages-only                  # فقط صفحه‌های تخته (PDF)
 ```
 
 معمولاً همین لینکِ ساده کافی است. اگر ضبطی به ورود نیاز داشت، لینکِ کامل همراه با مقدارِ `session=` را کپی کن (زود منقضی می‌شود).
 
 ### راه‌اندازیِ ربات
 
+یک دستور روی سرور. می‌پرسد با داکر یا مستقیم، همه‌چیز را نصب می‌کند (ffmpeg، وابستگی‌ها، سرویسِ systemd و دستورِ `vadana`) و بعد قدمِ بعدی را نشان می‌دهد.
+
 ```bash
-git clone https://github.com/phoseinq/vadana-extractor.git /opt/vadana-extractor
-cd /opt/vadana-extractor
-bash install.sh
-vadana env          # کانفیگِ زیر را ویرایش کن، بعد خودش ری‌استارت می‌شود
-systemctl enable --now vadana-bot
+curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/install.sh | bash
 ```
 
-`install.sh` خودش ffmpeg، یک virtualenv، وابستگی‌ها، سرویسِ systemd و دستورِ `vadana` را نصب می‌کند.
+بعد `bot/.env` را پر کن (با `vadana env`، یا برای داکر دستی ویرایشش کن) و راه بینداز. تنظیمات:
 
 | متغیر | توضیح |
 | :-- | :-- |
@@ -201,7 +214,7 @@ systemctl enable --now vadana-bot
 
 ```bash
 pip install -r requirements-api.txt
-uvicorn api:app --host 0.0.0.0 --port 8000
+uvicorn cli.api:app --host 0.0.0.0 --port 8000
 ```
 
 `POST /extract` با `{"url": "...", "kind": "files"}` یک zip از فایل‌ها برمی‌گرداند (یا با `"kind": "whiteboard"` همان PDFِ تخته).

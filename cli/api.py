@@ -5,7 +5,7 @@ Optional HTTP API — turns the extractor into a small service.
         -> a ZIP of the shared files, or the whiteboard PDF
     GET  /health
 
-Run:    uvicorn api:app --host 0.0.0.0 --port 8000
+Run:    uvicorn cli.api:app --host 0.0.0.0 --port 8000
 Needs:  pip install fastapi uvicorn   (set IRAN_PROXY in the env when hosting abroad)
 """
 from __future__ import annotations
@@ -22,7 +22,7 @@ from vadana.connect import parse_recording_url, ConnectClient, is_valid_recordin
 from vadana.slides import download_slides
 from vadana import whiteboard as wb_mod
 
-app = FastAPI(title="Vadana Extractor", version="2.3.1")
+app = FastAPI(title="Vadana Extractor", version="2.4.0")
 
 
 class ExtractRequest(BaseModel):
@@ -32,8 +32,8 @@ class ExtractRequest(BaseModel):
 
 def _client(url: str) -> tuple[ConnectClient, str]:
     rec = parse_recording_url(url)
-    if not is_valid_recording(rec):                # any IAU branch under ec.iau.ir; session optional
-        raise HTTPException(400, "not a valid Vadana recording url")
+    if not is_valid_recording(rec):                # any public Adobe Connect host; session optional
+        raise HTTPException(400, "not a valid Adobe Connect recording url")
     proxy = os.environ.get("IRAN_PROXY") or None
     return ConnectClient(rec.host, rec.token, proxy=proxy), rec.rec_id
 

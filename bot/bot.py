@@ -72,7 +72,7 @@ def _store_put(kind, rec_id, val):
     STORE.setdefault(kind, {})[rec_id] = val
     _store_save()
 
-LINK_RE = re.compile(r"https?://[\w.-]+\.ec\.iau\.ir/\S*")
+LINK_RE = re.compile(r"https?://[\w.-]+\.[\w-]{2,}/\S*")
 
 WELCOME = (
     "سلام 👋 به رباتِ آرشیوِ کلاس‌های وادانا خوش آمدید.\n\n"
@@ -547,7 +547,7 @@ async def handle_link(m: Message):
         return
     rec = parse_recording_url(LINK_RE.search(m.text).group(0))
     if not is_valid_recording(rec):
-        await m.reply("❌ فقط لینکِ معتبرِ آرشیوِ وادانا (آدرسِ ‎ec.iau.ir‎) پذیرفته می‌شود.")
+        await m.reply("❌ لینکِ معتبرِ ضبطِ ادوبی کانکت بفرستید — آدرسِ کاملِ جلسه را از مرورگر کپی کنید.")
         return
     mode = USER_MODE[uid]
     if mode == "video" and not (config.ALLOW_VIDEO or uid in config.ADMINS):

@@ -1,37 +1,66 @@
 #!/usr/bin/env bash
-# Installer for the Vadana bot (run as root on the server abroad).
-set -e
+# Vadana bot — one-command install. Downloads, sets up, and starts the bot.
+#   curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/install.sh | bash
+set -euo pipefail
 DIR=/opt/vadana-extractor
+REPO=https://github.com/phoseinq/vadana-extractor.git
 
-echo "==> system packages"
-apt-get update -y
-apt-get install -y python3 python3-venv python3-pip ffmpeg git
+ask() {                              # ask "prompt" [default] -> echoes the answer
+  local val=""
+  if [ -e /dev/tty ]; then printf '%s' "$1" >/dev/tty; read -r val </dev/tty || true; fi
+  printf '%s' "${val:-${2:-}}"
+}
 
-# fetch the code if it isn't here yet, so `curl ... | bash` works as a one-liner
-if [ ! -f "$DIR/requirements.txt" ]; then
-  git clone https://github.com/phoseinq/vadana-extractor.git "$DIR"
-fi
-cd "$DIR"
+fetch_code() {
+  if [ -f "$DIR/requirements.txt" ]; then git -C "$DIR" pull --ff-only || true
+  else git clone "$REPO" "$DIR"; fi
+}
 
-echo "==> virtualenv + dependencies"
-python3 -m venv "$DIR/venv"
-"$DIR/venv/bin/pip" install -U pip
-"$DIR/venv/bin/pip" install -r "$DIR/requirements.txt" -r "$DIR/bot/requirements.txt"
+write_env() {                        # create bot/.env from answers (keep an existing one)
+  if [ -f bot/.env ]; then TOKEN_SET=1; return; fi
+  cp bot/.env.example bot/.env
+  local token admins
+  token=$(ask 'BOT_TOKEN (from @BotFather): ')
+  admins=$(ask 'ADMINS — your numeric user id(s), comma-separated (Enter to skip): ')
+  if [ -n "$token" ]; then sed -i "s|^BOT_TOKEN=.*|BOT_TOKEN=$token|" bot/.env; TOKEN_SET=1; else TOKEN_SET=0; fi
+  if [ -n "$admins" ]; then sed -i "s|^ADMINS=.*|ADMINS=$admins|" bot/.env; fi
+}
 
-echo "==> config"
-[ -f "$DIR/bot/.env" ] || cp "$DIR/bot/.env.example" "$DIR/bot/.env"
-
-echo "==> 'vadana' management command"
-install -m 755 "$DIR/vadana.sh" /usr/local/bin/vadana
-
-echo "==> systemd service"
-cp "$DIR/bot/systemd/vadana-bot.service" /etc/systemd/system/
-systemctl daemon-reload
-
-cat <<'DONE'
-
-✓ Installed.  Next:
-    vadana env                       # fill in BOT_TOKEN, IRAN_PROXY, ADMINS, ...
+native() {
+  apt-get update -y
+  apt-get install -y python3 python3-venv python3-pip ffmpeg git
+  fetch_code; cd "$DIR"
+  python3 -m venv venv
+  venv/bin/pip install -qU pip
+  venv/bin/pip install -q -r requirements.txt -r bot/requirements.txt
+  write_env
+  install -m 755 vadana.sh /usr/local/bin/vadana
+  cp bot/systemd/vadana-bot.service /etc/systemd/system/
+  systemctl daemon-reload
+  if [ "${TOKEN_SET:-0}" = 1 ]; then
     systemctl enable --now vadana-bot
-    vadana                           # management menu
-DONE
+    echo "✓ running.  logs: journalctl -u vadana-bot -f"
+  else
+    systemctl enable vadana-bot
+    echo "Set BOT_TOKEN:  vadana env   then it starts."
+  fi
+}
+
+docker_mode() {
+  command -v docker >/dev/null || { echo "Docker isn't installed — https://docs.docker.com/engine/install/"; exit 1; }
+  apt-get install -y -q git
+  fetch_code; cd "$DIR"
+  write_env
+  if [ "${TOKEN_SET:-0}" = 1 ]; then
+    docker compose up -d --build
+    echo "✓ running.  logs: docker compose logs -f"
+  else
+    echo "Set BOT_TOKEN in bot/.env, then:  docker compose up -d --build"
+  fi
+}
+
+# one prompt picks the method (or pass: install.sh docker | install.sh native)
+case "$(printf '%s' "${1:-$(ask 'Install with Docker? [y/N]: ' n)}" | tr '[:upper:]' '[:lower:]')" in
+  y|yes|d|docker) docker_mode ;;
+  *)              native ;;
+esac

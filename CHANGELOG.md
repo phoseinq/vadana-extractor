@@ -1,5 +1,11 @@
 # Changelog
 
+## v2.4.0
++ Works with any Adobe Connect server now, not just IAU "Vadana". Send the full recording link from any Connect host — the input filter accepts any public host (and still blocks internal/private addresses, so the SSRF guard is intact) and the package layout is the standard Connect format.
++ Docker support: a `Dockerfile` + `docker-compose.yml`. One installer command (`curl … | bash`) that asks Docker or native, fills `bot/.env`, and starts the bot.
++ The three entry scripts moved into a `cli/` package (`cli/download_slides.py`, `cli/make_video.py`, `cli/api.py`) to keep the repo root clean.
++ README: an input→output example and an Adobe Connect badge.
+
 ## v2.3.1
 + Annotated-PDF output: the page is no longer squished into the 4:3 board — it's restored to the PDF's real (usually landscape) aspect, so text and shapes aren't distorted. Applies to both the synced video and the whiteboard PDF; the strokes ride along and stay aligned. Pure whiteboard (no PDF) is unchanged.
 
