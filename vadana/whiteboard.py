@@ -197,7 +197,9 @@ def render_page(shapes, scale: int = 2, label: str | None = None, ss: int = 2,
     bg: the shared-PDF page image to draw the strokes over (the professor annotated
     it); None -> a white board."""
     W, H = NATIVE_W * scale, NATIVE_H * scale
+    aspect = None
     if bg is not None:
+        aspect = bg.width / bg.height
         im = bg.convert("RGB").resize((W * ss, H * ss), Image.LANCZOS)
     else:
         im = Image.new("RGB", (W * ss, H * ss), "white")
@@ -206,6 +208,8 @@ def render_page(shapes, scale: int = 2, label: str | None = None, ss: int = 2,
         draw_shape(dr, s, scale * ss, W * ss, H * ss)
     if ss != 1:
         im = im.resize((W, H), Image.LANCZOS)
+    if aspect:
+        im = im.resize((round(H * aspect), H), Image.LANCZOS)
     if label:
         ImageDraw.Draw(im).text((8, 8), label, fill=(210, 210, 210), font=_font(20))
     return im

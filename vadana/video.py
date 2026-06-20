@@ -229,6 +229,10 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
     wb_frames = []
     if wb.pages:
         backgrounds = wb_mod.pdf_backgrounds(pdf_paths, wb.pages)
+        content_aspect = None
+        if backgrounds:
+            b0 = next(iter(backgrounds.values()))
+            content_aspect = b0.width / b0.height
         raw = build_frames(wb, os.path.join(work_dir, "frames"), scale=RENDER_SCALE, max_fps=max_fps,
                            progress=lambda i, n: rep("render", 22 + int(28 * i / max(1, n))),
                            backgrounds=backgrounds)
@@ -237,6 +241,8 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
         nraw = len(raw) or 1
         for i, (t, p) in enumerate(raw):
             im = Image.open(p).convert("RGB")
+            if content_aspect:
+                im = im.resize((round(im.height * content_aspect), im.height), Image.LANCZOS)
             im.thumbnail((OUT_W, OUT_H), Image.LANCZOS)
             sheet = Image.new("RGB", (OUT_W, OUT_H), "white")
             sheet.paste(im, ((OUT_W - im.width) // 2, (OUT_H - im.height) // 2))

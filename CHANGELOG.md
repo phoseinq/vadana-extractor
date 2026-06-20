@@ -1,5 +1,8 @@
 # Changelog
 
+## v2.3.1
++ Annotated-PDF output: the page is no longer squished into the 4:3 board — it's restored to the PDF's real (usually landscape) aspect, so text and shapes aren't distorted. Applies to both the synced video and the whiteboard PDF; the strokes ride along and stay aligned. Pure whiteboard (no PDF) is unchanged.
+
 ## v2.3.0
 **Security & hardening**
 + One input filter (`is_valid_recording`) on every entry point — bot, API, and both CLIs. The host must be under `ec.iau.ir`, the recording id alphanumeric, and the session token alphanumeric, so a crafted link can't point at another host (SSRF), traverse paths, or smuggle URL/header tricks through the session value.
