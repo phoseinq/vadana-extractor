@@ -22,5 +22,14 @@ LOCAL_API_URL = os.environ.get("LOCAL_API_URL") or None
 LOG_DIR = os.environ.get("LOG_DIR", "logs")
 STORAGE_CHANNEL = int(os.environ.get("STORAGE_CHANNEL", "0")) or None
 
+# Worker nodes (all OFF by default -> behaviour is exactly today's). When enabled,
+# a busy video build is offloaded to a live node over mTLS; with no node it stays local.
+NODE_API_ENABLE = os.environ.get("NODE_API_ENABLE", "0") == "1"
+NODE_API_HOST = os.environ.get("NODE_API_HOST", "0.0.0.0")
+NODE_API_PORT = int(os.environ.get("NODE_API_PORT", "8443"))
+NODE_DIR = os.environ.get("NODE_DIR", "nodes")
+HEARTBEAT_TTL = float(os.environ.get("HEARTBEAT_TTL", "30"))
+CLAIM_TTL = float(os.environ.get("CLAIM_TTL", "1200"))
+
 if not BOT_TOKEN:
     raise SystemExit("Set BOT_TOKEN (and ideally IRAN_PROXY) in the environment.")

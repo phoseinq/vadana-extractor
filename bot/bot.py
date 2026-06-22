@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 import traceback
+import uuid
 import zipfile
 from collections import defaultdict, deque
 from datetime import date
@@ -25,7 +26,9 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
 
-from bot import config
+from bot import config, node_ca
+from bot.nodes import NodeRegistry, should_offload
+from bot.node_api import start_node_api
 from vadana.connect import parse_recording_url, ConnectClient, Recording, is_valid_recording
 from vadana.slides import download_slides, category_of
 from vadana import audio as audio_mod
@@ -173,6 +176,8 @@ ACTIVE_STATUS: dict[int, Message] = {}
 LAST_USED: dict[int, float] = {}
 SLIDES_SEM = asyncio.Semaphore(config.MAX_CONCURRENT)
 VIDEO_SEM = asyncio.Semaphore(config.MAX_VIDEO_CONCURRENT)
+REG = None
+NODE_EVENTS: dict[str, asyncio.Event] = {}
 
 _session = AiohttpSession(api=TelegramAPIServer.from_base(config.LOCAL_API_URL)) \
     if config.LOCAL_API_URL else None
@@ -730,6 +735,54 @@ async def do_whiteboard(m, rec, uid):
             await poller
         shutil.rmtree(work, ignore_errors=True)
 
+def _write_file(path, data):
+    with open(path, "wb") as f:
+        f.write(data)
+
+def _load_allowlist(reg):
+    try:
+        with open(os.path.join(config.NODE_DIR, "allowlist.json"), encoding="utf-8") as f:
+            reg.load_allowlist(json.load(f))
+    except FileNotFoundError:
+        pass
+
+async def _offload_video(rec, prog, stop):
+    """Download the recording package and hand the heavy build to a worker node.
+    Returns the mp4 path the node produced, or None to fall back to a local render
+    (node timed out, failed, or the user cancelled). Never raises through to the
+    caller's local path."""
+    job_id = f"{rec.rec_id}-{uuid.uuid4().hex[:8]}"
+    jobs_dir = os.path.join(config.NODE_DIR, "jobs")
+    os.makedirs(jobs_dir, exist_ok=True)
+    pkg_path = os.path.join(jobs_dir, f"{job_id}.zip")
+    client = ConnectClient(rec.host, rec.token, proxy=config.IRAN_PROXY)
+    prog.set(L_FETCH, 0)
+    data = await asyncio.to_thread(client.download_package_bytes, rec.rec_id,
+                                   lambda g, t: prog.set(L_FETCH, (g / t * 25) if t else 12))
+    await asyncio.to_thread(_write_file, pkg_path, data)
+    ev = asyncio.Event()
+    NODE_EVENTS[job_id] = ev
+    REG.enqueue(job_id, pkg_path, rec.rec_id)
+    prog.set("🛰 به نودِ کارگر سپرده شد؛ در حال پردازش…", 30)
+    try:
+        deadline = time.monotonic() + config.CLAIM_TTL
+        while not ev.is_set() and not stop.is_set() and time.monotonic() < deadline:
+            try:
+                await asyncio.wait_for(ev.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                pass
+            p = REG.get_progress(job_id)
+            if p:
+                prog.set(STAGE.get(p[0], p[0]), 30 + min(p[1], 100) * 0.6)
+        REG.pop_failed(job_id)
+        return REG.pop_result(job_id)
+    finally:
+        NODE_EVENTS.pop(job_id, None)
+        try:
+            os.remove(pkg_path)
+        except OSError:
+            pass
+
 async def do_video(m, rec, uid):
     status = await m.reply("🔎 در حال بررسی…")
     ACTIVE_STATUS[uid] = status
@@ -751,33 +804,42 @@ async def do_video(m, rec, uid):
 
     prog, stop = _Prog(), asyncio.Event()
     prog.min_total = VIDEO_ETA_SEC
-    if VIDEO_SEM.locked():
-        prog.queued = True
-        prog.label = "یک ویدیوی دیگر در حال ساخت است؛ به‌نوبت شروع می‌شود."
     ACTIVE_STOP[uid] = stop
     poller = asyncio.create_task(_poll(status, prog, stop))
     work = os.path.join(config.WORK_DIR, f"{rec.rec_id}_video")
     tmp_out = os.path.join(work, "out.mp4")
     thumb = os.path.join(work, "thumb.jpg")
+    node_mp4 = None
     try:
-        async with VIDEO_SEM:
-            shutil.rmtree(work, ignore_errors=True)
-            os.makedirs(work, exist_ok=True)
-            client = ConnectClient(rec.host, rec.token, proxy=config.IRAN_PROXY)
-            prog.set(L_FETCH, 0)
-            zf = await asyncio.to_thread(client.open_package, rec.rec_id,
-                                         lambda g, t: prog.set(L_FETCH, (g / t * 30) if t else 15))
-            prog.set(STAGE["parse"], 32)
-            sl = os.path.join(work, "pdfs")
-            pdfs = await asyncio.to_thread(download_slides, client, rec.rec_id, sl, zf, None, {".pdf"})
-            result = await asyncio.to_thread(video_mod.make_full_video, zf, work, tmp_out, 2, 4.0,
-                                             lambda s, p: prog.set(STAGE.get(s, s), 32 + p * 0.6),
-                                             pdfs or None)
-            if result is None:
-                result = await asyncio.to_thread(video_mod.make_media_video, zf, work, tmp_out, pdfs or None, 2,
-                                                 lambda s, p: prog.set(STAGE_MEDIA.get(s, s), 52 + p * 0.45))
+        if config.NODE_API_ENABLE and REG is not None and should_offload(VIDEO_SEM.locked(), REG):
+            node_mp4 = await _offload_video(rec, prog, stop)
+        if node_mp4:
+            tmp_out = node_mp4
+        elif not stop.is_set():
+            if VIDEO_SEM.locked():
+                prog.queued = True
+                prog.label = "یک ویدیوی دیگر در حال ساخت است؛ به‌نوبت شروع می‌شود."
+            async with VIDEO_SEM:
+                shutil.rmtree(work, ignore_errors=True)
+                os.makedirs(work, exist_ok=True)
+                client = ConnectClient(rec.host, rec.token, proxy=config.IRAN_PROXY)
+                prog.set(L_FETCH, 0)
+                zf = await asyncio.to_thread(client.open_package, rec.rec_id,
+                                             lambda g, t: prog.set(L_FETCH, (g / t * 30) if t else 15))
+                prog.set(STAGE["parse"], 32)
+                sl = os.path.join(work, "pdfs")
+                pdfs = await asyncio.to_thread(download_slides, client, rec.rec_id, sl, zf, None, {".pdf"})
+                result = await asyncio.to_thread(video_mod.make_full_video, zf, work, tmp_out, 2, 4.0,
+                                                 lambda s, p: prog.set(STAGE.get(s, s), 32 + p * 0.6),
+                                                 pdfs or None)
+                if result is None:
+                    result = await asyncio.to_thread(video_mod.make_media_video, zf, work, tmp_out, pdfs or None, 2,
+                                                     lambda s, p: prog.set(STAGE_MEDIA.get(s, s), 52 + p * 0.45))
         stop.set(); await poller
+        if not os.path.exists(tmp_out):
+            return
         await status.edit_text("📤 در حال ذخیره و ارسال…")
+        os.makedirs(work, exist_ok=True)
         dur = await asyncio.to_thread(audio_mod.duration_seconds, tmp_out)
         _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp_out), dur=dur)
         th = await asyncio.to_thread(_video_thumb, tmp_out, thumb)
@@ -796,6 +858,11 @@ async def do_video(m, rec, uid):
         if not poller.done():
             await poller
         shutil.rmtree(work, ignore_errors=True)
+        if node_mp4:
+            try:
+                os.remove(node_mp4)
+            except OSError:
+                pass
 
 @dp.message()
 async def fallback(m: Message):
@@ -803,7 +870,33 @@ async def fallback(m: Message):
                    reply_markup=MENU)
 
 async def main():
+    global REG
     shutil.rmtree(config.WORK_DIR, ignore_errors=True)
+    if config.NODE_API_ENABLE:
+        try:
+            REG = NodeRegistry(config.HEARTBEAT_TTL, config.CLAIM_TTL)
+            node_ca.create_ca(config.NODE_DIR)
+            if not os.path.exists(os.path.join(config.NODE_DIR, "server.crt")):
+                node_ca.issue_cert(config.NODE_DIR, "master", server=True, out_prefix="server")
+            _load_allowlist(REG)
+
+            async def on_result(jid, _path):
+                ev = NODE_EVENTS.get(jid)
+                if ev:
+                    ev.set()
+
+            async def on_fail(jid, reason):
+                log.info("node job failed: %s (%s)", jid, reason)
+                ev = NODE_EVENTS.get(jid)
+                if ev:
+                    ev.set()
+
+            await start_node_api(REG, config.NODE_DIR, config.NODE_API_HOST,
+                                 config.NODE_API_PORT, on_result, on_fail)
+            log.info("node API listening on %s:%s", config.NODE_API_HOST, config.NODE_API_PORT)
+        except Exception:
+            log.error("node API failed to start; running local-only:\n%s", traceback.format_exc())
+            REG = None
     print("bot running...")
     await dp.start_polling(bot)
 
