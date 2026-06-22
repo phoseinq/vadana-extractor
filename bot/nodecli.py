@@ -111,6 +111,11 @@ def cmd_status(args) -> None:
         print(f"  {name:18} {fp[:12]}…  {state}")
     print(f"  {online}/{len(allow)} online" + ("" if live else "   (bot not running? no live status)"))
 
+def cmd_names(args) -> None:
+    """One node name per line — for the interactive menu's pickers."""
+    for name in _load_allow(_dir(args)).values():
+        print(name)
+
 def cmd_remove(args) -> None:
     d = _dir(args)
     allow = _load_allow(d)
@@ -147,7 +152,7 @@ def main(argv=None) -> int:
         pass
     p = argparse.ArgumentParser(prog="vadana node")
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("init", "list", "status", "on", "off", "auto"):
+    for name in ("init", "list", "status", "names", "on", "off", "auto"):
         _common(sub.add_parser(name))
     for name in ("add", "remove"):
         sp = sub.add_parser(name)
@@ -155,7 +160,8 @@ def main(argv=None) -> int:
         _common(sp)
     args = p.parse_args(argv)
     {"init": cmd_init, "add": cmd_add, "list": cmd_list, "status": cmd_status,
-     "remove": cmd_remove, "on": cmd_mode, "off": cmd_mode, "auto": cmd_mode}[args.cmd](args)
+     "names": cmd_names, "remove": cmd_remove,
+     "on": cmd_mode, "off": cmd_mode, "auto": cmd_mode}[args.cmd](args)
     return 0
 
 if __name__ == "__main__":

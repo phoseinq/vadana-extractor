@@ -55,7 +55,7 @@ run() {
 }
 
 nodes_menu() {
-  local c nm h
+  local c nm h hh sel names i
   while true; do
     clear 2>/dev/null
     printf "\n   ${C}■${N} ${B}Worker nodes${N} ${D}· offload heavy video builds${N}\n\n"
@@ -66,11 +66,20 @@ nodes_menu() {
     printf "     ${C}b${N} back\n\n   ${C}›${N} "
     read -r c || return
     case "$c" in
-      1) printf "   node name: "; read -r nm
-         printf "   master public IP/host: "; read -r h
-         [ -n "$nm" ] && run node add "$nm" --host "$h"; pause ;;
-      2) printf "   node name to remove: "; read -r nm
-         [ -n "$nm" ] && run node remove "$nm"; pause ;;
+      1) printf "   new node name: "; read -r nm
+         [ -z "$nm" ] && continue
+         h=$(curl -fsS4 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
+         printf "   master public IP/host [${G}%s${N}]: " "$h"; read -r hh; h="${hh:-$h}"
+         run node add "$nm" --host "$h"; pause ;;
+      2) mapfile -t names < <(run node names 2>/dev/null)
+         if [ "${#names[@]}" -eq 0 ]; then printf "   no nodes to remove.\n"; pause; continue; fi
+         i=1; for nm in "${names[@]}"; do printf "     ${C}%d${N}) %s\n" "$i" "$nm"; i=$((i+1)); done
+         printf "   remove which # (Enter to cancel): "; read -r sel
+         case "$sel" in
+           ''|*[!0-9]*) ;;
+           *) [ "$sel" -ge 1 ] && [ "$sel" -le "${#names[@]}" ] && run node remove "${names[$((sel-1))]}" ;;
+         esac
+         pause ;;
       3) ;;
       4) run node on;   pause ;;
       5) run node off;  pause ;;
