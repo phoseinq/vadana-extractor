@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.1.1
++ Whiteboard timing fix (issue #1): the video now follows the recording's `currentPage` timeline for **every** whiteboard, not only annotated-PDF ones. A plain multi-page board no longer jumps to whatever stroke was drawn last, so pages don't flicker or conflict when several pages' strokes overlap in time. Recordings with no `currentPage` signal keep the stroke-driven fallback.
+
 ## v3.1.0
 + The node API now turns **on and off automatically**: it runs only when at least one worker node is registered, and stays off otherwise. `vadana node add`/`remove` flip it (the bot restarts to apply); manual override with `vadana node on|off|auto`.
 + `vadana node status` is a live **health check** — it shows which registered nodes are connected right now (the bot publishes liveness to `nodes/status.json`).

@@ -44,13 +44,18 @@ def test_build_frames_follows_currentpage_nav(tmp_path):
     board = Whiteboard(final={(0, 0): {}, (0, 1): {}}, events=events, nav=nav)
     bg = {(0, 0): Image.new("RGB", (40, 30), "white"), (0, 1): Image.new("RGB", (40, 30), "white")}
 
-    ts = [t for t, _ in vid.build_frames(board, str(tmp_path / "a"), scale=1, max_fps=2.0, backgrounds=bg)]
-    assert ts == sorted(ts)                              # frames stay time-ordered
-    assert any(abs(t - 5.0) < 0.6 for t in ts)           # page shows at the flip (5s), not the 30s stroke
+    # a currentPage timeline drives the displayed page — page 1 shows at the 5s flip
+    # (not the 30s stroke) — both over a PDF AND on a plain board (the issue #1 fix).
+    for label, kw in (("pdf", {"backgrounds": bg}), ("plain", {})):
+        ts = [t for t, _ in vid.build_frames(board, str(tmp_path / label), scale=1, max_fps=2.0, **kw)]
+        assert ts == sorted(ts)                          # frames stay time-ordered
+        assert any(abs(t - 5.0) < 0.6 for t in ts), label
 
-    # no backgrounds -> stroke-driven: the page only appears when it's drawn on (30s)
-    ts2 = [t for t, _ in vid.build_frames(board, str(tmp_path / "b"), scale=1, max_fps=2.0)]
-    assert not any(abs(t - 5.0) < 0.6 for t in ts2)
+    # no currentPage timeline -> stroke-driven fallback: a page appears only when it's
+    # drawn on (30s), never at a 5s "flip" (there isn't one to follow).
+    nonav = Whiteboard(final=board.final, events=events, nav=[])
+    ts3 = [t for t, _ in vid.build_frames(nonav, str(tmp_path / "nonav"), scale=1, max_fps=2.0)]
+    assert not any(abs(t - 5.0) < 0.6 for t in ts3)
 
 
 def test_whiteboard_parse_shapes(ftcontent_xml):

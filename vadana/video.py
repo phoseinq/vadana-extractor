@@ -70,7 +70,7 @@ def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
     last_emit = -1e9
     nav = _clean_nav(getattr(wb, "nav", None) or [])
 
-    if backgrounds and nav:
+    if nav:
         stream = ([(t, 0, ("show", p)) for (t, p) in nav]
                   + [(t, 1, ("draw", pg, sid, sh)) for (t, pg, sid, sh) in wb.events])
         stream.sort(key=lambda e: (e[0], e[1]))
