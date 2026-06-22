@@ -127,15 +127,15 @@ def cmd_status(args) -> None:
     online = 0
     for fp, name in allow.items():
         n = live.get(name)
-        if n and n.get("alive"):
+        if n and n.get("seen_ago", 1e9) < 15:        # nodes ping every ~5s, so a live one is always recent
             online += 1
-            state = f"● online   (ping {n['seen_ago']}s ago)"
+            state = f"● connected     (ping {n['seen_ago']}s ago)"
         elif n:
-            state = f"○ offline  (last seen {n['seen_ago']}s ago)"
+            state = f"○ disconnected  (last seen {n['seen_ago']}s ago)"
         else:
-            state = "○ offline  (never connected)"
+            state = "○ disconnected  (never connected)"
         print(f"  {name:18} {fp[:12]}…  {state}")
-    print(f"  {online}/{len(allow)} online" + ("" if live else "   (bot not running? no live status)"))
+    print(f"  {online}/{len(allow)} connected" + ("" if live else "   (bot not running? no live status)"))
 
 def cmd_probe(args) -> None:
     """Active liveness check: a connected node pings every few seconds, so the bot's

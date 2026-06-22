@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.1.4
++ `vadana node status` (shown at the top of the Workers menu) is now a tight, live read: a node counts as **connected** only if it sent a heartbeat in the last ~15s, so the status next to each node reflects the real connection right now. The separate "check connection now" menu item is gone — the top line already shows it.
+
 ## v3.1.3
 + `vadana node probe` (and the Workers menu's **check connection now**) does a live connectivity check: it watches for a fresh heartbeat over a few seconds and reports each node as **CONNECTED** or **DISCONNECTED** right now, instead of trusting the last-known status.
 + Workers menu **reconnect**: restarts the node listener so connected nodes re-handshake (busy-guarded — it won't interrupt a video that's building).

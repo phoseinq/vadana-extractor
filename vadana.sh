@@ -81,8 +81,7 @@ nodes_menu() {
     printf "\n   ${D}manage${N}\n"
     printf "     ${C}1${N} add node     ${C}2${N} remove node     ${C}3${N} refresh\n"
     printf "     ${C}4${N} force on     ${C}5${N} force off       ${C}6${N} auto (default)\n"
-    printf "     ${C}7${N} show enrollment bundle      ${C}8${N} check connection now (live)\n"
-    printf "     ${C}9${N} reconnect (restart node listener)\n\n"
+    printf "     ${C}7${N} show enrollment bundle      ${C}8${N} reconnect (restart node listener)\n\n"
     printf "     ${C}b${N} back\n\n   ${C}›${N} "
     read -r c || return
     case "$c" in
@@ -111,8 +110,7 @@ nodes_menu() {
       4) run node on;   pause ;;
       5) run node off;  pause ;;
       6) run node auto; pause ;;
-      8) run node probe; pause ;;
-      9) reconnect_listener; pause ;;
+      8) reconnect_listener; pause ;;
       b|B|q|Q|"") return ;;
       *) ;;
     esac
