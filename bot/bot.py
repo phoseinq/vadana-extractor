@@ -368,6 +368,12 @@ def _video_inc(uid):
     STORE["video_day"][str(uid)] = [today, 1] if not d or d[0] != today else [today, d[1] + 1]
     _store_save()
 
+def _full_link(rec) -> str:
+    """The full recording link as the user sent it — with the session token if there
+    was one — so the channel caption lets an admin re-open the exact class."""
+    base = f"{rec.host}/{rec.rec_id}/"
+    return f"{base}?session={rec.token}" if rec.token else base
+
 async def _archive(path, thumb=None, uid=None, link=None):
     """Upload a local file to the storage channel once; return (file_id, is_video).
     The thumbnail (first page/frame) is baked in here, so it rides along with the
@@ -644,7 +650,7 @@ async def do_files(m, rec, ftype, uid):
             allf = sorted(saved)
             for i, p in enumerate(allf, 1):
                 await status.edit_text(f"📤 در حال ذخیره‌سازی در آرشیو… {i} از {len(allf)}")
-                fid, isv = await _archive(p, uid=uid, link=rec.base_url)
+                fid, isv = await _archive(p, uid=uid, link=_full_link(rec))
                 manifest.append({"name": os.path.basename(p), "cat": category_of(p), "fid": fid, "v": isv})
             _store_put("files", rec.rec_id, manifest)
             _meta_put(rec.rec_id, date=_today_fa())
@@ -712,7 +718,7 @@ async def do_whiteboard(m, rec, uid):
             return
         await status.edit_text("📤 در حال ذخیره و ارسال…")
         _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp))
-        fid, _ = await _archive(tmp, thumb, uid, rec.base_url)
+        fid, _ = await _archive(tmp, thumb, uid, _full_link(rec))
         _store_put("wb", rec.rec_id, fid)
         await _send_fid(m, fid, False, _caption("📝 وایت‌بردِ کلاس", rec.rec_id),
                         markup=_report_kb(rec.rec_id))
@@ -775,7 +781,7 @@ async def do_video(m, rec, uid):
         dur = await asyncio.to_thread(audio_mod.duration_seconds, tmp_out)
         _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp_out), dur=dur)
         th = await asyncio.to_thread(_video_thumb, tmp_out, thumb)
-        fid, _ = await _archive(tmp_out, th, uid, rec.base_url)
+        fid, _ = await _archive(tmp_out, th, uid, _full_link(rec))
         _store_put("video", rec.rec_id, fid)
         if uid not in config.ADMINS:
             _video_inc(uid)
