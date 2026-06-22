@@ -61,6 +61,17 @@ run() {
   esac
 }
 
+reconnect_listener() {               # restart the node API so nodes re-handshake (master can't reach out to a node itself)
+  local busy a
+  busy=$(ls "$DIR/bot_work" 2>/dev/null | wc -l)
+  if [ "${busy:-0}" -gt 0 ]; then
+    printf "   ${Y}a video is building now${N} — restarting drops it. continue? [y/N] "; read -r a
+    [ "$a" = y ] || { echo "   cancelled."; return; }
+  fi
+  systemctl restart "$SERVICE" \
+    && echo "   ✓ node listener restarted — nodes re-handshake within a few seconds (confirm with option 8)."
+}
+
 nodes_menu() {
   local c nm h hh sel names i
   while true; do
@@ -70,7 +81,8 @@ nodes_menu() {
     printf "\n   ${D}manage${N}\n"
     printf "     ${C}1${N} add node     ${C}2${N} remove node     ${C}3${N} refresh\n"
     printf "     ${C}4${N} force on     ${C}5${N} force off       ${C}6${N} auto (default)\n"
-    printf "     ${C}7${N} show enrollment bundle (copy to the node)\n\n"
+    printf "     ${C}7${N} show enrollment bundle      ${C}8${N} check connection now (live)\n"
+    printf "     ${C}9${N} reconnect (restart node listener)\n\n"
     printf "     ${C}b${N} back\n\n   ${C}›${N} "
     read -r c || return
     case "$c" in
@@ -99,6 +111,8 @@ nodes_menu() {
       4) run node on;   pause ;;
       5) run node off;  pause ;;
       6) run node auto; pause ;;
+      8) run node probe; pause ;;
+      9) reconnect_listener; pause ;;
       b|B|q|Q|"") return ;;
       *) ;;
     esac

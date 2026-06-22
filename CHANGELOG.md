@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.1.3
++ `vadana node probe` (and the Workers menu's **check connection now**) does a live connectivity check: it watches for a fresh heartbeat over a few seconds and reports each node as **CONNECTED** or **DISCONNECTED** right now, instead of trusting the last-known status.
++ Workers menu **reconnect**: restarts the node listener so connected nodes re-handshake (busy-guarded — it won't interrupt a video that's building).
+
 ## v3.1.2
 + `vadana node add <name>` now fills in the master's address automatically — no `--host` needed. It reads the box's own public IP from the local routing table (`ip route`), so it works even where outbound IP-echo services are blocked.
 + The Docker install now also drops the `vadana` management CLI, so `vadana` and `vadana node …` work the same whether you installed native or with Docker.

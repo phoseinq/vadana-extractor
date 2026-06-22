@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import tarfile
+import time
 
 from bot import node_ca
 
@@ -136,6 +137,30 @@ def cmd_status(args) -> None:
         print(f"  {name:18} {fp[:12]}…  {state}")
     print(f"  {online}/{len(allow)} online" + ("" if live else "   (bot not running? no live status)"))
 
+def cmd_probe(args) -> None:
+    """Active liveness check: a connected node pings every few seconds, so the bot's
+    status.json keeps its seen_ago small. Wait one full cycle, then a node still
+    showing a fresh ping is connected right now; one whose seen_ago grew is not."""
+    d = _dir(args)
+    allow = _load_allow(d)
+    if not allow:
+        print("no nodes registered.")
+        return
+    w = float(getattr(args, "wait", None) or 7.0)
+    print(f"checking… watching for a live ping over {w:.0f}s")
+    time.sleep(w)
+    live = {n["name"]: n for n in _read_status(d).get("nodes", [])}
+    online = 0
+    for fp, name in allow.items():
+        n = live.get(name)
+        if n and n.get("seen_ago", 1e9) < w:
+            online += 1
+            print(f"  {name:18} ✓ CONNECTED     (live, last ping {n['seen_ago']:.1f}s ago)")
+        else:
+            seen = f"{n['seen_ago']:.0f}s ago" if n else "never connected"
+            print(f"  {name:18} ✗ DISCONNECTED  (last seen {seen})")
+    print(f"  {online}/{len(allow)} connected right now")
+
 def cmd_names(args) -> None:
     """One node name per line — for the interactive menu's pickers."""
     for name in _load_allow(_dir(args)).values():
@@ -177,7 +202,7 @@ def main(argv=None) -> int:
         pass
     p = argparse.ArgumentParser(prog="vadana node")
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name in ("init", "list", "status", "names", "on", "off", "auto"):
+    for name in ("init", "list", "status", "probe", "names", "on", "off", "auto"):
         _common(sub.add_parser(name))
     for name in ("add", "remove", "bundle"):
         sp = sub.add_parser(name)
@@ -185,7 +210,7 @@ def main(argv=None) -> int:
         _common(sp)
     args = p.parse_args(argv)
     {"init": cmd_init, "add": cmd_add, "list": cmd_list, "status": cmd_status,
-     "names": cmd_names, "remove": cmd_remove, "bundle": cmd_bundle,
+     "probe": cmd_probe, "names": cmd_names, "remove": cmd_remove, "bundle": cmd_bundle,
      "on": cmd_mode, "off": cmd_mode, "auto": cmd_mode}[args.cmd](args)
     return 0
 
