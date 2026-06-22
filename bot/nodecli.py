@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import io
 import json
 import os
 import sys
+import tarfile
 
 from bot import node_ca
+
+def _bundle(d: str, name: str, master_url: str) -> str:
+    """One base64 blob holding the CA + this node's cert/key + the master URL — so
+    the node only copies a single string instead of three files."""
+    prefix = f"node-{name}"
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for arc, src in (("ca.crt", "ca.crt"), ("node.crt", prefix + ".crt"), ("node.key", prefix + ".key")):
+            tar.add(os.path.join(d, src), arcname=arc)
+        info = tarfile.TarInfo("master")
+        b = master_url.encode()
+        info.size = len(b)
+        tar.addfile(info, io.BytesIO(b))
+    return base64.b64encode(buf.getvalue()).decode()
 
 def _dir(args) -> str:
     return args.dir or os.environ.get("NODE_DIR", "nodes")
@@ -65,20 +82,28 @@ def cmd_add(args) -> None:
 
     host = args.host or "<MASTER_HOST>"
     port = args.port or os.environ.get("NODE_API_PORT", "8443")
-    print(f"""✓ node "{args.name}" registered.
+    master_url = f"https://{host}:{port}"
+    blob = _bundle(d, args.name, master_url)
+    with open(os.path.join(d, f"{args.name}.bundle"), "w") as f:
+        f.write(blob)
+    print(f"""✓ node "{args.name}" registered  ({master_url}).
 
-Copy these 3 files to the node machine (rename to ca.crt / node.crt / node.key):
-    {os.path.join(d, 'ca.crt')}
-    {os.path.join(d, prefix + '.crt')}
-    {os.path.join(d, prefix + '.key')}
-
-Then on the node, one command:
+On the node machine, one command then paste the bundle when asked:
     curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-node/main/install.sh | bash
-    # it asks Docker or native, then:
-    vadana-node config --master https://{host}:{port} --ca ca.crt --cert node.crt --key node.key
-    vadana-node run
 
-Check it connected here:  vadana node status""")
+──────── enrollment bundle (copy the whole line) ────────
+{blob}
+─────────────────────────────────────────────────────────
+
+(show it again later:  vadana node bundle {args.name})""")
+
+def cmd_bundle(args) -> None:
+    p = os.path.join(_dir(args), f"{args.name}.bundle")
+    try:
+        with open(p) as f:
+            print(f.read())
+    except FileNotFoundError:
+        print(f"no bundle for '{args.name}' — run:  vadana node add {args.name} --host <MASTER_IP>")
 
 def cmd_list(args) -> None:
     allow = _load_allow(_dir(args))
@@ -154,13 +179,13 @@ def main(argv=None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("init", "list", "status", "names", "on", "off", "auto"):
         _common(sub.add_parser(name))
-    for name in ("add", "remove"):
+    for name in ("add", "remove", "bundle"):
         sp = sub.add_parser(name)
         sp.add_argument("name")
         _common(sp)
     args = p.parse_args(argv)
     {"init": cmd_init, "add": cmd_add, "list": cmd_list, "status": cmd_status,
-     "names": cmd_names, "remove": cmd_remove,
+     "names": cmd_names, "remove": cmd_remove, "bundle": cmd_bundle,
      "on": cmd_mode, "off": cmd_mode, "auto": cmd_mode}[args.cmd](args)
     return 0
 

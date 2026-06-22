@@ -63,10 +63,20 @@ nodes_menu() {
     run node status
     printf "\n   ${D}manage${N}\n"
     printf "     ${C}1${N} add node     ${C}2${N} remove node     ${C}3${N} refresh\n"
-    printf "     ${C}4${N} force on     ${C}5${N} force off       ${C}6${N} auto (default)\n\n"
+    printf "     ${C}4${N} force on     ${C}5${N} force off       ${C}6${N} auto (default)\n"
+    printf "     ${C}7${N} show enrollment bundle (copy to the node)\n\n"
     printf "     ${C}b${N} back\n\n   ${C}›${N} "
     read -r c || return
     case "$c" in
+      7) mapfile -t names < <(run node names 2>/dev/null)
+         if [ "${#names[@]}" -eq 0 ]; then printf "   no nodes yet — add one first.\n"; pause; continue; fi
+         i=1; for nm in "${names[@]}"; do printf "     ${C}%d${N}) %s\n" "$i" "$nm"; i=$((i+1)); done
+         printf "   bundle for which # (Enter to cancel): "; read -r sel
+         case "$sel" in
+           ''|*[!0-9]*) ;;
+           *) [ "$sel" -ge 1 ] && [ "$sel" -le "${#names[@]}" ] && { printf "\n"; run node bundle "${names[$((sel-1))]}"; } ;;
+         esac
+         pause ;;
       1) printf "   new node name: "; read -r nm
          [ -z "$nm" ] && continue
          h=$(curl -fsS4 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
