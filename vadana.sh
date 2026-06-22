@@ -28,7 +28,8 @@ run() {
     files)          dl files "$2" ;;
     whiteboard|wb)  dl whiteboard "$2" ;;
     video)          dl video "$2" ;;
-    node)           shift; ( cd "$DIR" && NODE_DIR="${NODE_DIR:-$DIR/nodes}" "$PY" -m bot.nodecli "$@" )
+    node)           shift; ( cd "$DIR" && set -a; [ -f "$ENVF" ] && . "$ENVF"; set +a
+                              NODE_DIR="${NODE_DIR:-$DIR/nodes}" "$PY" -m bot.nodecli "$@" )
                     case "$1" in add|remove|on|off|auto)
                       systemctl restart "$SERVICE" >/dev/null 2>&1 && echo "   (bot restarted to apply)" ;;
                     esac ;;
