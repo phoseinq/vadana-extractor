@@ -29,6 +29,7 @@ from aiogram.types import (
 from bot import config, node_ca
 from bot.nodes import NodeRegistry, should_offload
 from bot.node_api import start_node_api
+from bot.offload_bundle import build_job_bundle
 from vadana.connect import parse_recording_url, ConnectClient, Recording, is_valid_recording
 from vadana.slides import download_slides, category_of
 from vadana import audio as audio_mod
@@ -735,10 +736,6 @@ async def do_whiteboard(m, rec, uid):
             await poller
         shutil.rmtree(work, ignore_errors=True)
 
-def _write_file(path, data):
-    with open(path, "wb") as f:
-        f.write(data)
-
 def _load_allowlist(reg):
     try:
         with open(os.path.join(config.NODE_DIR, "allowlist.json"), encoding="utf-8") as f:
@@ -759,7 +756,7 @@ async def _offload_video(rec, prog, stop):
     prog.set(L_FETCH, 0)
     data = await asyncio.to_thread(client.download_package_bytes, rec.rec_id,
                                    lambda g, t: prog.set(L_FETCH, (g / t * 25) if t else 12))
-    await asyncio.to_thread(_write_file, pkg_path, data)
+    await asyncio.to_thread(build_job_bundle, pkg_path, data, client, rec.rec_id)
     ev = asyncio.Event()
     NODE_EVENTS[job_id] = ev
     REG.enqueue(job_id, pkg_path, rec.rec_id)
