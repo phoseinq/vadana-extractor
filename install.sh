@@ -53,10 +53,12 @@ docker_mode() {
   install -m 755 vadana.sh /usr/local/bin/vadana   # the manage CLI works in docker mode too
   write_env
   if [ "${TOKEN_SET:-0}" = 1 ]; then
-    docker compose up -d --build
+    printf 'pulling the bot image…\n'
+    if docker compose pull --quiet 2>/dev/null; then docker compose up -d
+    else printf 'no prebuilt image — building locally…\n'; docker compose up -d --build; fi
     echo "✓ running.  logs: docker compose logs -f"
   else
-    echo "Set BOT_TOKEN in bot/.env, then:  docker compose up -d --build"
+    echo "Set BOT_TOKEN in bot/.env, then:  docker compose pull && docker compose up -d"
   fi
 }
 

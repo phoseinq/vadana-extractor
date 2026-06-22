@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.1.5
++ The Docker setup pulls the prebuilt image instead of building: compose references `ghcr.io/phoseinq/vadana-extractor:latest` (CI publishes it on every release) with `build:` kept as a local fallback, and the installer pulls first and only builds if the pull fails. So `docker compose pull` works and a fresh Docker install skips the local build.
+
 ## v3.1.4
 + `vadana node status` (shown at the top of the Workers menu) is now a tight, live read: a node counts as **connected** only if it sent a heartbeat in the last ~15s, so the status next to each node reflects the real connection right now. The separate "check connection now" menu item is gone — the top line already shows it.
 

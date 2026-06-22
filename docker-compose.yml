@@ -1,8 +1,9 @@
 # Vadana Extractor bot.  Fill bot/.env first, then:  docker compose up -d --build
 services:
   bot:
+    # default: pull the prebuilt image (docker compose pull). build: is a fallback.
+    image: ghcr.io/phoseinq/vadana-extractor:latest
     build: .
-    image: vadana-extractor
     container_name: vadana-bot
     env_file: bot/.env
     volumes:
