@@ -368,17 +368,31 @@ def _video_inc(uid):
     STORE["video_day"][str(uid)] = [today, 1] if not d or d[0] != today else [today, d[1] + 1]
     _store_save()
 
-async def _archive(path, thumb=None):
+async def _archive(path, thumb=None, uid=None, link=None):
     """Upload a local file to the storage channel once; return (file_id, is_video).
     The thumbnail (first page/frame) is baked in here, so it rides along with the
-    file_id on every later re-send — no need to re-attach it."""
+    file_id on every later re-send — no need to re-attach it.
+
+    When uid/link are given, the channel copy is captioned with who requested it
+    (username + numeric id) and the recording link — for the admin's reference.
+    Sent as plain text (no parse_mode), so user-controlled values can't inject."""
     name = os.path.basename(path)
+    caption = name
+    if uid is not None:
+        try:
+            ch = await bot.get_chat(uid)
+            who = f"@{ch.username}" if ch.username else (ch.full_name or "—")
+        except Exception:
+            who = "—"
+        caption = f"{name}\n👤 {who}\n🆔 {uid}"
+        if link:
+            caption += f"\n🔗 {link}"
     th = FSInputFile(thumb) if thumb and os.path.exists(thumb) else None
     if os.path.splitext(path)[1].lower() in VIDEO_EXTS:
         msg = await bot.send_video(config.STORAGE_CHANNEL, FSInputFile(path),
-                                   caption=name, supports_streaming=True, thumbnail=th)
+                                   caption=caption, supports_streaming=True, thumbnail=th)
         return msg.video.file_id, True
-    msg = await bot.send_document(config.STORAGE_CHANNEL, FSInputFile(path), caption=name, thumbnail=th)
+    msg = await bot.send_document(config.STORAGE_CHANNEL, FSInputFile(path), caption=caption, thumbnail=th)
     return msg.document.file_id, False
 
 async def _send_fid(m, fid, is_video, caption, markup=None) -> bool:
@@ -630,7 +644,7 @@ async def do_files(m, rec, ftype, uid):
             allf = sorted(saved)
             for i, p in enumerate(allf, 1):
                 await status.edit_text(f"📤 در حال ذخیره‌سازی در آرشیو… {i} از {len(allf)}")
-                fid, isv = await _archive(p)
+                fid, isv = await _archive(p, uid=uid, link=rec.base_url)
                 manifest.append({"name": os.path.basename(p), "cat": category_of(p), "fid": fid, "v": isv})
             _store_put("files", rec.rec_id, manifest)
             _meta_put(rec.rec_id, date=_today_fa())
@@ -698,7 +712,7 @@ async def do_whiteboard(m, rec, uid):
             return
         await status.edit_text("📤 در حال ذخیره و ارسال…")
         _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp))
-        fid, _ = await _archive(tmp, thumb)
+        fid, _ = await _archive(tmp, thumb, uid, rec.base_url)
         _store_put("wb", rec.rec_id, fid)
         await _send_fid(m, fid, False, _caption("📝 وایت‌بردِ کلاس", rec.rec_id),
                         markup=_report_kb(rec.rec_id))
@@ -761,7 +775,7 @@ async def do_video(m, rec, uid):
         dur = await asyncio.to_thread(audio_mod.duration_seconds, tmp_out)
         _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp_out), dur=dur)
         th = await asyncio.to_thread(_video_thumb, tmp_out, thumb)
-        fid, _ = await _archive(tmp_out, th)
+        fid, _ = await _archive(tmp_out, th, uid, rec.base_url)
         _store_put("video", rec.rec_id, fid)
         if uid not in config.ADMINS:
             _video_inc(uid)
