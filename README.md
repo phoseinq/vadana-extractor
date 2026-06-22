@@ -135,14 +135,14 @@ When the master's single video slot is busy, it can hand the heavy build to a re
 ```bash
 vadana node init --host <MASTER_IP>          # once: create the CA + server cert
 vadana node add mynode --host <MASTER_IP>    # issue a node cert + print a bundle to copy
-# enable in bot/.env: NODE_API_ENABLE=1, then restart
+vadana node status                            # which nodes are connected right now
 ```
 
-The node side lives in its own repo: **[vadana-node](https://github.com/phoseinq/vadana-node)** (worker + Docker). Config:
+The node API turns **on automatically** once a node is registered (and off when the last one is removed) — `vadana node add`/`remove` restart the bot to apply. Force it with `vadana node on|off|auto`. The interactive `vadana` menu has a **Workers** section for all of this. The node side lives in its own repo: **[vadana-node](https://github.com/phoseinq/vadana-node)** (worker + Docker, multi-worker with `--workers`). Config:
 
 | Variable | Meaning |
 | :-- | :-- |
-| `NODE_API_ENABLE` | `1` = accept worker nodes; `0` = local-only (default) |
+| `NODE_API_ENABLE` | override: `1`/`0` force on/off; unset = auto (on when ≥1 node registered) |
 | `NODE_API_PORT` | mTLS port nodes connect to (default `8443`) |
 | `HEARTBEAT_TTL` | seconds a node counts as "alive" since its last ping (default 30) |
 | `CLAIM_TTL` | seconds before an undelivered job falls back to local (default 1200) |
@@ -256,11 +256,11 @@ curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/inst
 
 ```bash
 vadana node init --host <MASTER_IP>          # یک‌بار: ساختِ CA و گواهیِ سرور
-vadana node add mynode --host <MASTER_IP>    # صدورِ گواهیِ نود + چاپِ باندلِ آماده برای کپی
-# در bot/.env روشن کن: NODE_API_ENABLE=1 بعد ری‌استارت
+vadana node add mynode --host <MASTER_IP>    # صدورِ گواهیِ نود + چاپِ باندلِ آماده
+vadana node status                            # کدام نودها همین الان وصل‌اند
 ```
 
-سمتِ نود ریپوی جداست: **[vadana-node](https://github.com/phoseinq/vadana-node)** (worker + Docker). تنظیماتِ مستر: `NODE_API_ENABLE` (۱=روشن، پیش‌فرض ۰)، `NODE_API_PORT` (۸۴۴۳)، `HEARTBEAT_TTL` (۳۰ث)، `CLAIM_TTL` (۱۲۰۰ث).
+APIِ نود **خودکار** روشن می‌شود وقتی حداقل یک نود ثبت شده باشد (و با حذفِ آخرین نود خاموش) — `add`/`remove` ربات را ری‌استارت می‌کنند تا اعمال شود. دستیِ‌اش: `vadana node on|off|auto`. منوی تعاملیِ `vadana` هم بخشِ **Workers** دارد. سمتِ نود ریپوی جداست: **[vadana-node](https://github.com/phoseinq/vadana-node)** (worker + Docker، چند-ورکر با `--workers`). تنظیماتِ مستر: `NODE_API_ENABLE` (override؛ پیش‌فرض auto)، `NODE_API_PORT` (۸۴۴۳)، `HEARTBEAT_TTL` (۳۰ث)، `CLAIM_TTL` (۱۲۰۰ث).
 
 ### API (اختیاری)
 

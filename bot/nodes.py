@@ -1,34 +1,40 @@
-"""
-In-memory bookkeeping for worker nodes: heartbeats, the offload decision, the
-queue of video jobs waiting for a node, claimed-job timeouts, and the cert
-allowlist. Everything runs in the bot's single event-loop thread, so plain dict
-ops are safe (no locks).
-"""
 from __future__ import annotations
 
 import time
 from collections import OrderedDict
-
 
 def should_offload(video_sem_locked: bool, reg: "NodeRegistry") -> bool:
     """Offload a video build only when the master's own video slot is busy AND a
     node is currently alive. Otherwise build locally — exactly today's path."""
     return bool(video_sem_locked and reg.alive())
 
+def resolve_enabled(env: str | None, mode: str, node_count: int) -> bool:
+    """Decide whether to run the node API at startup. An explicit env override wins,
+    then the `vadana node on/off` mode, else "auto": on iff at least one node is
+    registered. So with no nodes added, the API simply never starts."""
+    e = (env or "").lower()
+    if e in ("1", "on", "true"):
+        return True
+    if e in ("0", "off", "false"):
+        return False
+    if mode == "on":
+        return True
+    if mode == "off":
+        return False
+    return node_count > 0
 
 class NodeRegistry:
     def __init__(self, heartbeat_ttl: float = 30, claim_ttl: float = 1200):
         self.heartbeat_ttl = heartbeat_ttl
         self.claim_ttl = claim_ttl
-        self._seen: dict[str, float] = {}                       # node -> last ping (monotonic)
-        self._pending: "OrderedDict[str, dict]" = OrderedDict()  # job_id -> job (FIFO)
-        self._claimed: dict[str, tuple[dict, float]] = {}        # job_id -> (job, claimed_at)
+        self._seen: dict[str, float] = {}
+        self._pending: "OrderedDict[str, dict]" = OrderedDict()
+        self._claimed: dict[str, tuple[dict, float]] = {}
         self._progress: dict[str, tuple[str, float]] = {}
         self._results: dict[str, str] = {}
         self._failed: dict[str, str] = {}
-        self._allow: dict[str, str] = {}                         # cert fingerprint -> node
+        self._allow: dict[str, str] = {}
 
-    # ---- heartbeats / liveness
     def ping(self, name: str) -> None:
         self._seen[name] = time.monotonic()
 
@@ -41,14 +47,13 @@ class NodeRegistry:
         return [{"name": n, "seen_ago": round(now - t, 1),
                  "alive": now - t < self.heartbeat_ttl} for n, t in self._seen.items()]
 
-    # ---- job queue
     def enqueue(self, job_id: str, package_path: str, rec_id: str) -> None:
         self._pending[job_id] = {"job_id": job_id, "package_path": package_path, "rec_id": rec_id}
 
     def claim(self, name: str) -> dict | None:
         if not self._pending:
             return None
-        job_id, job = self._pending.popitem(last=False)   # oldest first
+        job_id, job = self._pending.popitem(last=False)
         job["node"] = name
         self._claimed[job_id] = (job, time.monotonic())
         return job
@@ -91,7 +96,6 @@ class NodeRegistry:
                 del self._claimed[job_id]
         return out
 
-    # ---- cert allowlist (defense in depth on top of CA verification)
     def allow(self, fingerprint: str, name: str) -> None:
         self._allow[fingerprint] = name
 

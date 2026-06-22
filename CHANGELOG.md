@@ -1,5 +1,11 @@
 # Changelog
 
+## v3.1.0
++ The node API now turns **on and off automatically**: it runs only when at least one worker node is registered, and stays off otherwise. `vadana node add`/`remove` flip it (the bot restarts to apply); manual override with `vadana node on|off|auto`.
++ `vadana node status` is a live **health check** — it shows which registered nodes are connected right now (the bot publishes liveness to `nodes/status.json`).
++ The interactive `vadana` menu gained a **Workers** section: list nodes, add (with prompts), remove, and force on/off/auto.
++ Worker side ([vadana-node](https://github.com/phoseinq/vadana-node)): a one-command installer (Docker or native) and multiple workers per machine (`--workers N`, or `--scale` in Docker).
+
 ## v3.0.0
 + **Worker nodes.** When the master's single video slot is busy, it can offload the heavy build to a remote worker node over mutually-authenticated TLS, so fewer jobs wait in the queue. The node is pure CPU + ffmpeg (no Iran proxy, no Telegram token) — the master bundles the recording package with the shared PDFs, the node renders and returns the mp4. **Off by default (`NODE_API_ENABLE=0`); with no node connected the master builds everything itself, exactly as before, and no job is ever stranded.**
 + New `vadana node` CLI: `init` (create the CA), `add` (issue a node cert + print a bundle), `list` / `status` / `remove`.

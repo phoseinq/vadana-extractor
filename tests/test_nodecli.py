@@ -34,6 +34,27 @@ def test_readd_rotates_single_cert(tmp_path):
     assert list(allow.values()).count("n") == 1
 
 
+def test_mode_on_off_auto(tmp_path):
+    import os
+    d = str(tmp_path)
+    nodecli.main(["on", "--dir", d])
+    assert open(os.path.join(d, "mode")).read() == "on"
+    nodecli.main(["off", "--dir", d])
+    assert open(os.path.join(d, "mode")).read() == "off"
+    nodecli.main(["auto", "--dir", d])
+    assert not os.path.exists(os.path.join(d, "mode"))      # auto = no override file
+
+
+def test_status_reports_registered_and_offline(tmp_path, capsys):
+    d = str(tmp_path)
+    nodecli.main(["init", "--dir", d])
+    nodecli.main(["add", "n1", "--dir", d])
+    capsys.readouterr()
+    nodecli.main(["status", "--dir", d])                    # no bot running -> offline
+    out = capsys.readouterr().out
+    assert "n1" in out and "node API: ON" in out and "offline" in out
+
+
 def test_list_shows_registered(tmp_path, capsys):
     d = str(tmp_path)
     nodecli.main(["init", "--dir", d])

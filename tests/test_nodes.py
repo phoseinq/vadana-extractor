@@ -1,4 +1,20 @@
-from bot.nodes import NodeRegistry, should_offload
+from bot.nodes import NodeRegistry, resolve_enabled, should_offload
+
+
+def test_resolve_enabled_auto_follows_node_count():
+    assert resolve_enabled(None, "auto", 0) is False     # no nodes -> off
+    assert resolve_enabled(None, "auto", 2) is True       # nodes registered -> on
+    assert resolve_enabled("", "auto", 1) is True
+
+
+def test_resolve_enabled_manual_mode_overrides_auto():
+    assert resolve_enabled(None, "off", 5) is False        # forced off despite nodes
+    assert resolve_enabled(None, "on", 0) is True          # forced on despite no nodes
+
+
+def test_resolve_enabled_env_wins():
+    assert resolve_enabled("0", "on", 5) is False          # env override beats mode
+    assert resolve_enabled("1", "off", 0) is True
 
 
 def test_offload_decision():

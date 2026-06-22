@@ -27,7 +27,7 @@ from aiogram.types import (
 )
 
 from bot import config, node_ca
-from bot.nodes import NodeRegistry, should_offload
+from bot.nodes import NodeRegistry, should_offload, resolve_enabled
 from bot.node_api import start_node_api
 from bot.offload_bundle import build_job_bundle
 from vadana.connect import parse_recording_url, ConnectClient, Recording, is_valid_recording
@@ -743,6 +743,22 @@ def _load_allowlist(reg):
     except FileNotFoundError:
         pass
 
+def _read_node_mode():
+    try:
+        return open(os.path.join(config.NODE_DIR, "mode"), encoding="utf-8").read().strip().lower()
+    except FileNotFoundError:
+        return "auto"
+
+def _allowlist_count():
+    try:
+        with open(os.path.join(config.NODE_DIR, "allowlist.json"), encoding="utf-8") as f:
+            return len(json.load(f))
+    except (FileNotFoundError, ValueError):
+        return 0
+
+def _node_should_run():
+    return resolve_enabled(config.NODE_API_ENABLE, _read_node_mode(), _allowlist_count())
+
 async def _offload_video(rec, prog, stop):
     """Download the recording package and hand the heavy build to a worker node.
     Returns the mp4 path the node produced, or None to fall back to a local render
@@ -808,7 +824,7 @@ async def do_video(m, rec, uid):
     thumb = os.path.join(work, "thumb.jpg")
     node_mp4 = None
     try:
-        if config.NODE_API_ENABLE and REG is not None and should_offload(VIDEO_SEM.locked(), REG):
+        if REG is not None and should_offload(VIDEO_SEM.locked(), REG):
             node_mp4 = await _offload_video(rec, prog, stop)
         if node_mp4:
             tmp_out = node_mp4
@@ -869,7 +885,7 @@ async def fallback(m: Message):
 async def main():
     global REG
     shutil.rmtree(config.WORK_DIR, ignore_errors=True)
-    if config.NODE_API_ENABLE:
+    if _node_should_run():
         try:
             REG = NodeRegistry(config.HEARTBEAT_TTL, config.CLAIM_TTL)
             node_ca.create_ca(config.NODE_DIR)
@@ -891,6 +907,17 @@ async def main():
             await start_node_api(REG, config.NODE_DIR, config.NODE_API_HOST,
                                  config.NODE_API_PORT, on_result, on_fail)
             log.info("node API listening on %s:%s", config.NODE_API_HOST, config.NODE_API_PORT)
+
+            async def _snapshot():
+                while True:
+                    await asyncio.sleep(5)
+                    try:
+                        with open(os.path.join(config.NODE_DIR, "status.json"), "w", encoding="utf-8") as f:
+                            json.dump({"nodes": REG.nodes(), "mode": _read_node_mode()}, f)
+                    except Exception:
+                        pass
+
+            asyncio.create_task(_snapshot())
         except Exception:
             log.error("node API failed to start; running local-only:\n%s", traceback.format_exc())
             REG = None

@@ -28,7 +28,10 @@ run() {
     files)          dl files "$2" ;;
     whiteboard|wb)  dl whiteboard "$2" ;;
     video)          dl video "$2" ;;
-    node)           shift; ( cd "$DIR" && NODE_DIR="${NODE_DIR:-$DIR/nodes}" "$PY" -m bot.nodecli "$@" ) ;;
+    node)           shift; ( cd "$DIR" && NODE_DIR="${NODE_DIR:-$DIR/nodes}" "$PY" -m bot.nodecli "$@" )
+                    case "$1" in add|remove|on|off|auto)
+                      systemctl restart "$SERVICE" >/dev/null 2>&1 && echo "   (bot restarted to apply)" ;;
+                    esac ;;
     update)
       cd "$DIR" && git pull --ff-only \
         && "$DIR/venv/bin/pip" install -q -r requirements.txt -r bot/requirements.txt \
@@ -51,6 +54,33 @@ run() {
   esac
 }
 
+nodes_menu() {
+  local c nm h
+  while true; do
+    clear 2>/dev/null
+    printf "\n   ${C}■${N} ${B}Worker nodes${N} ${D}· offload heavy video builds${N}\n\n"
+    run node status
+    printf "\n   ${D}manage${N}\n"
+    printf "     ${C}1${N} add node     ${C}2${N} remove node     ${C}3${N} refresh\n"
+    printf "     ${C}4${N} force on     ${C}5${N} force off       ${C}6${N} auto (default)\n\n"
+    printf "     ${C}b${N} back\n\n   ${C}›${N} "
+    read -r c || return
+    case "$c" in
+      1) printf "   node name: "; read -r nm
+         printf "   master public IP/host: "; read -r h
+         [ -n "$nm" ] && run node add "$nm" --host "$h"; pause ;;
+      2) printf "   node name to remove: "; read -r nm
+         [ -n "$nm" ] && run node remove "$nm"; pause ;;
+      3) ;;
+      4) run node on;   pause ;;
+      5) run node off;  pause ;;
+      6) run node auto; pause ;;
+      b|B|q|Q|"") return ;;
+      *) ;;
+    esac
+  done
+}
+
 menu() {
   local st dot n
   while true; do
@@ -67,6 +97,8 @@ menu() {
     printf "     ${C}1${N} shared files      ${C}2${N} whiteboard PDF      ${C}3${N} archive video\n\n"
     printf "   ${D}service${N}\n"
     printf "     ${C}4${N} status   ${C}5${N} logs   ${C}6${N} restart   ${C}7${N} start   ${C}8${N} stop   ${C}9${N} update\n\n"
+    printf "   ${D}workers${N}\n"
+    printf "     ${C}n${N} manage worker nodes\n\n"
     printf "     ${C}e${N} edit config      ${C}u${N} uninstall      ${C}q${N} quit\n\n"
     printf "   ${C}›${N} "
     read -r n || break
@@ -74,6 +106,7 @@ menu() {
       1) dl files; pause ;; 2) dl whiteboard; pause ;; 3) dl video; pause ;;
       4) run status; pause ;; 5) run logs ;; 6) run restart; pause ;;
       7) run start; pause ;; 8) run stop; pause ;; 9) run update; pause ;;
+      n|N) nodes_menu ;;
       e|E) run env; pause ;; u|U) run uninstall; pause ;;
       q|Q|0|"") clear 2>/dev/null; exit 0 ;;
       *) ;;
