@@ -50,6 +50,7 @@ docker_mode() {
   command -v docker >/dev/null || { echo "Docker isn't installed — https://docs.docker.com/engine/install/"; exit 1; }
   apt-get install -y -q git
   fetch_code; cd "$DIR"
+  install -m 755 vadana.sh /usr/local/bin/vadana   # the manage CLI works in docker mode too
   write_env
   if [ "${TOKEN_SET:-0}" = 1 ]; then
     docker compose up -d --build

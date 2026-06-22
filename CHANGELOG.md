@@ -1,5 +1,9 @@
 # Changelog
 
+## v3.1.2
++ `vadana node add <name>` now fills in the master's address automatically — no `--host` needed. It reads the box's own public IP from the local routing table (`ip route`), so it works even where outbound IP-echo services are blocked.
++ The Docker install now also drops the `vadana` management CLI, so `vadana` and `vadana node …` work the same whether you installed native or with Docker.
+
 ## v3.1.1
 + Whiteboard timing fix (issue #1): the video now follows the recording's `currentPage` timeline for **every** whiteboard, not only annotated-PDF ones. A plain multi-page board no longer jumps to whatever stroke was drawn last, so pages don't flicker or conflict when several pages' strokes overlap in time. Recordings with no `currentPage` signal keep the stroke-driven fallback.
 

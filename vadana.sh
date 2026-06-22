@@ -28,8 +28,14 @@ run() {
     files)          dl files "$2" ;;
     whiteboard|wb)  dl whiteboard "$2" ;;
     video)          dl video "$2" ;;
-    node)           shift; ( cd "$DIR" && set -a; [ -f "$ENVF" ] && . "$ENVF"; set +a
-                              NODE_DIR="${NODE_DIR:-$DIR/nodes}" "$PY" -m bot.nodecli "$@" )
+    node)           shift
+                    if [ "$1" = add ] && ! printf '%s\n' "$@" | grep -q -- '--host'; then
+                      h=$(ip route get 1.1.1.1 2>/dev/null | grep -oP 'src \K[0-9.]+' | head -1)
+                      [ -n "$h" ] || h=$(hostname -I 2>/dev/null | awk '{print $1}')
+                      [ -n "$h" ] && set -- "$@" --host "$h"   # master's own public IP; auto-fill it
+                    fi
+                    ( cd "$DIR" && set -a; [ -f "$ENVF" ] && . "$ENVF"; set +a
+                      NODE_DIR="${NODE_DIR:-$DIR/nodes}" "$PY" -m bot.nodecli "$@" )
                     case "$1" in add|remove|on|off|auto)
                       systemctl restart "$SERVICE" >/dev/null 2>&1 && echo "   (bot restarted to apply)" ;;
                     esac ;;
@@ -79,9 +85,7 @@ nodes_menu() {
          pause ;;
       1) printf "   new node name: "; read -r nm
          [ -z "$nm" ] && continue
-         h=$(curl -fsS4 ifconfig.me 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}')
-         printf "   master public IP/host [${G}%s${N}]: " "$h"; read -r hh; h="${hh:-$h}"
-         run node add "$nm" --host "$h"; pause ;;
+         run node add "$nm"; pause ;;   # host auto-detected in the node route
       2) mapfile -t names < <(run node names 2>/dev/null)
          if [ "${#names[@]}" -eq 0 ]; then printf "   no nodes to remove.\n"; pause; continue; fi
          i=1; for nm in "${names[@]}"; do printf "     ${C}%d${N}) %s\n" "$i" "$nm"; i=$((i+1)); done
