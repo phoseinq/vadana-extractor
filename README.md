@@ -128,6 +128,25 @@ The bot is one `aiogram` event loop. Every heavy step (download, whiteboard rend
 
 Where to look: `bot/bot.py` (handlers, the two semaphores, the live-progress poller), `vadana/connect.py` (auth + package download), `vadana/whiteboard.py` + `vadana/video.py` (reconstruction), `vadana/slides.py` (shared files).
 
+### Worker nodes (optional)
+
+When the master's single video slot is busy, it can hand the heavy build to a remote **worker node** over mutually-authenticated TLS, so fewer jobs wait in the queue. The node is pure CPU + ffmpeg — it holds no Iran proxy and no Telegram token; the master ships it the recording package plus the shared PDFs in one bundle, the node renders, and posts the mp4 back. **Off by default — with no node connected, the master builds everything itself, exactly as before.**
+
+```bash
+vadana node init --host <MASTER_IP>          # once: create the CA + server cert
+vadana node add mynode --host <MASTER_IP>    # issue a node cert + print a bundle to copy
+# enable in bot/.env: NODE_API_ENABLE=1, then restart
+```
+
+The node side lives in its own repo: **[vadana-node](https://github.com/phoseinq/vadana-node)** (worker + Docker). Config:
+
+| Variable | Meaning |
+| :-- | :-- |
+| `NODE_API_ENABLE` | `1` = accept worker nodes; `0` = local-only (default) |
+| `NODE_API_PORT` | mTLS port nodes connect to (default `8443`) |
+| `HEARTBEAT_TTL` | seconds a node counts as "alive" since its last ping (default 30) |
+| `CLAIM_TTL` | seconds before an undelivered job falls back to local (default 1200) |
+
 ### HTTP API (optional)
 
 ```bash
@@ -230,6 +249,18 @@ curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/inst
 ### چطور کار می‌کند
 
 هر ضبط یک ZIPِ آفلاین در `/<id>/output/<id>.zip` دارد. اسناد اشتراکی از `downloadUrl`های داخلِ `mainstream.xml` می‌آیند؛ وایت‌برد رویدادهای بُرداریِ زمان‌دار در `ftcontent*.xml` است که بازپخش می‌شود تا تخته دوباره کشیده شود؛ صدا و اشتراکِ صفحه با offsetهای `indexstream.xml` روی تایم‌لاین می‌نشینند و با FFmpeg ترکیب می‌شوند.
+
+### نودهای کارگر (اختیاری)
+
+وقتی تنها اسلاتِ ویدیوی مستر پر است، می‌تواند ساختِ سنگین را روی mTLS به یک **نودِ کارگرِ** دور بسپارد تا فایلِ کمتری در صف بماند. نود فقط CPU و ffmpeg است — پروکسیِ ایران و توکنِ تلگرام ندارد؛ مستر پکیجِ ضبط را همراهِ PDFهای اشتراکی در یک باندل می‌فرستد، نود رِندر می‌کند و MP4 را برمی‌گرداند. **پیش‌فرض خاموش — بدونِ نود، مستر دقیقاً مثلِ قبل خودش همه‌چیز را می‌سازد.**
+
+```bash
+vadana node init --host <MASTER_IP>          # یک‌بار: ساختِ CA و گواهیِ سرور
+vadana node add mynode --host <MASTER_IP>    # صدورِ گواهیِ نود + چاپِ باندلِ آماده برای کپی
+# در bot/.env روشن کن: NODE_API_ENABLE=1 بعد ری‌استارت
+```
+
+سمتِ نود ریپوی جداست: **[vadana-node](https://github.com/phoseinq/vadana-node)** (worker + Docker). تنظیماتِ مستر: `NODE_API_ENABLE` (۱=روشن، پیش‌فرض ۰)، `NODE_API_PORT` (۸۴۴۳)، `HEARTBEAT_TTL` (۳۰ث)، `CLAIM_TTL` (۱۲۰۰ث).
 
 ### API (اختیاری)
 
