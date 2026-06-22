@@ -98,5 +98,9 @@ class NodeRegistry:
     def is_allowed(self, fingerprint: str) -> bool:
         return fingerprint in self._allow
 
+    def name_for(self, fingerprint: str) -> str | None:
+        """The node name behind a cert fingerprint, or None if not allow-listed."""
+        return self._allow.get(fingerprint)
+
     def load_allowlist(self, mapping: dict[str, str]) -> None:
         self._allow.update(mapping)
