@@ -1,2 +1,6 @@
 # colored inline-button styles need aiogram >= 3.29 (Bot API 9.4)
 aiogram>=3.29
+# worker-node mTLS: CA + cert issuance, and the master's node API (aiohttp also
+# comes via aiogram, pinned here so the node API doesn't depend on that)
+cryptography>=42
+aiohttp>=3.9

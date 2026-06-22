@@ -24,3 +24,6 @@ bot/support.txt
 
 # local-only tooling output (Claude Code / superpowers specs & plans) — kept off the repo
 docs/superpowers/
+
+# serena (local symbol index / config)
+.serena/

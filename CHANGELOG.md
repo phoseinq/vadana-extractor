@@ -1,5 +1,10 @@
 # Changelog
 
+## v3.0.0
++ **Worker nodes.** When the master's single video slot is busy, it can offload the heavy build to a remote worker node over mutually-authenticated TLS, so fewer jobs wait in the queue. The node is pure CPU + ffmpeg (no Iran proxy, no Telegram token) — the master bundles the recording package with the shared PDFs, the node renders and returns the mp4. **Off by default (`NODE_API_ENABLE=0`); with no node connected the master builds everything itself, exactly as before, and no job is ever stranded.**
++ New `vadana node` CLI: `init` (create the CA), `add` (issue a node cert + print a bundle), `list` / `status` / `remove`.
++ The worker side ships as its own repo, [vadana-node](https://github.com/phoseinq/vadana-node) (worker + Docker).
+
 ## v2.5.0
 + Video audio gets a speech-cleanup pass — a high-pass to cut low rumble, an FFT denoiser for steady background hiss/hum, then level-evening so a quiet professor and a louder student sit closer. On by default; tune the ffmpeg chain or turn it off with the `AUDIO_DENOISE` env var.
 

@@ -28,6 +28,7 @@ run() {
     files)          dl files "$2" ;;
     whiteboard|wb)  dl whiteboard "$2" ;;
     video)          dl video "$2" ;;
+    node)           shift; ( cd "$DIR" && NODE_DIR="${NODE_DIR:-$DIR/nodes}" "$PY" -m bot.nodecli "$@" ) ;;
     update)
       cd "$DIR" && git pull --ff-only \
         && "$DIR/venv/bin/pip" install -q -r requirements.txt -r bot/requirements.txt \
