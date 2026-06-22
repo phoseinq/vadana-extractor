@@ -55,7 +55,7 @@ docker_mode() {
   if [ "${TOKEN_SET:-0}" = 1 ]; then
     printf 'pulling the bot image…\n'
     if docker compose pull --quiet 2>/dev/null; then docker compose up -d
-    else printf 'no prebuilt image — building locally…\n'; docker compose up -d --build; fi
+    else printf 'no prebuilt image — building locally…\n'; docker compose --progress quiet up -d --build; fi
     echo "✓ running.  logs: docker compose logs -f"
   else
     echo "Set BOT_TOKEN in bot/.env, then:  docker compose pull && docker compose up -d"
