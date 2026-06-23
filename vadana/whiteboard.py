@@ -28,6 +28,7 @@ _CHANGE_RE = re.compile(
 _PAGE_RE = re.compile(r"<String><!\[CDATA\[set_WB_So_(\d+)\]\]>")
 _PT_RE = re.compile(r"<x><!\[CDATA\[([^\]]*)\]\]></x>\s*<y><!\[CDATA\[([^\]]*)\]\]></y>")
 _CURPAGE_RE = re.compile(r"<name><!\[CDATA\[currentPage\]\]></name>\s*<newValue><!\[CDATA\[(\d+)\]\]></newValue>")
+_TPGNUM_RE = re.compile(r"tPgNum-(\d+)")
 
 @dataclass
 class Shape:
@@ -282,6 +283,23 @@ def load_from_package(zf: zipfile.ZipFile) -> Whiteboard:
     merged_events.sort(key=lambda e: e[0])
     merged_nav.sort(key=lambda e: e[0])
     return Whiteboard(final=merged_final, events=merged_events, nav=merged_nav)
+
+def load_pdf_content(zf: zipfile.ZipFile) -> list[tuple[int, int]]:
+    """Page-show timeline for an Adobe "Share PDF" pod (setPdfContentSo events):
+    [(time_ms, page_index0), ...] — the 0-based PDF page anchored at the top of the
+    viewport (`tPgNum`) over time. Empty if the recording has no shared-PDF pod.
+    Lets the video show a shared document, not just whiteboard/screen-share."""
+    nav: list[tuple[int, int]] = []
+    for name in sorted(n for n in zf.namelist() if re.fullmatch(r"ftcontent\d+\.xml", n)):
+        xml = zf.read(name).decode("utf-8", "replace")
+        if "pdfContent" not in xml:
+            continue
+        for t_str, body in _MSG_RE.findall(xml):
+            m = _TPGNUM_RE.search(body)
+            if m:
+                nav.append((int(t_str), int(m.group(1))))
+    nav.sort()
+    return nav
 
 def make_pdf(zf: zipfile.ZipFile, out_path: str, scale: int = 2,
              thumb_path: str | None = None, pdf_paths=None) -> str | None:

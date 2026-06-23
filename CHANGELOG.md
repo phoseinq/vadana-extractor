@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.2.0
++ **Shared-PDF recordings now render.** When the professor shares a PDF through Adobe's "Share PDF" pod (a `setPdfContentSo` stream), the video now shows that document — following its own page-change timeline — instead of a blank/white screen. Before, only the whiteboard and screen-share were drawn, so a lecture that was mostly a shared PDF came out white. Screen-share still takes precedence during its own periods, so a recording that starts on a PDF and switches to screen-sharing shows both halves correctly.
+
 ## v3.1.6
 + Video build no longer fails on recordings that contain an empty screen-share clip. Some Adobe screen-shares are a tiny stub with no video stream; ffmpeg exited non-zero on it and the whole job died. Such a clip is now skipped (the whiteboard shows through that span) instead of aborting the build.
 

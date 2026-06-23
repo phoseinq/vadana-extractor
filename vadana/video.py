@@ -156,6 +156,58 @@ def pdf_frames(pdf_paths, frames_dir, canvas=(1280, 960)):
         doc.close()
     return out
 
+def _pdf_page_changes(nav, min_show_ms=800):
+    """Collapse a noisy tPgNum stream to page-change points, dropping a page that
+    flashed past (rapid scroll) for under min_show_ms."""
+    changes, last = [], None
+    for t, p in sorted(nav):
+        if p != last:
+            changes.append((t, p)); last = p
+    out = []
+    for i, (t, p) in enumerate(changes):
+        nxt = changes[i + 1][0] if i + 1 < len(changes) else 1 << 62
+        if nxt - t >= min_show_ms:
+            out.append((t, p))
+    return out or changes[-1:]
+
+def pdf_content_frames(pdf_paths, nav, frames_dir, out_w, out_h):
+    """Frames for an Adobe "Share PDF" pod: render the shared PDF's pages and emit
+    the page that was on screen at each page-change in nav. Returns (frames, window)
+    where window is the (start_s, end_s) the document occupied on the timeline."""
+    import fitz
+    os.makedirs(frames_dir, exist_ok=True)
+    max_page = max((p for _, p in nav), default=0)
+    cands = []
+    for p in dict.fromkeys(pdf_paths or []):
+        try:
+            cands.append((fitz.open(p).page_count, p))
+        except Exception:
+            pass
+    fit = [c for c in cands if c[0] > max_page]
+    pick = min(fit)[1] if fit else (max(cands)[1] if cands else None)
+    if not pick:
+        return [], None
+    doc = fitz.open(pick)
+    cache: dict[int, str] = {}
+
+    def page_png(i):
+        i = max(0, min(doc.page_count - 1, i))
+        if i not in cache:
+            pix = doc[i].get_pixmap(matrix=fitz.Matrix(2, 2))
+            im = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+            im.thumbnail((out_w, out_h), Image.LANCZOS)
+            sheet = Image.new("RGB", (out_w, out_h), "white")
+            sheet.paste(im, ((out_w - im.width) // 2, (out_h - im.height) // 2))
+            fp = os.path.join(frames_dir, f"p{i:04d}.png")
+            sheet.save(fp)
+            cache[i] = fp
+        return cache[i]
+
+    frames = [(t / 1000.0, page_png(p)) for t, p in _pdf_page_changes(nav)]
+    window = (nav[0][0] / 1000.0, nav[-1][0] / 1000.0)
+    doc.close()
+    return frames, window
+
 def make_media_video(zf, work_dir, out_path, pdf_paths=None, scale: int = 2, progress=None):
     """Archive video for non-whiteboard recordings: a slideshow of the shared
     PDFs (if any) or a single blank page — both over the lecture audio."""
@@ -216,7 +268,8 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
     streams = tl.parse_streams(zf.read("indexstream.xml").decode("utf-8", "replace"))
     shares = [s for s in streams if s["type"] == "screenshare"]
     wb = wb_mod.load_from_package(zf)
-    if not wb.pages and not shares:
+    pdf_nav = wb_mod.load_pdf_content(zf)
+    if not wb.pages and not shares and not pdf_nav:
         return None
 
     master_s = max(_meta_seconds(zf, "mainstream.xml"), _meta_seconds(zf, "ftcontent1.xml"),
@@ -281,10 +334,21 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
         if k:
             windows.append((start, start + dur))
 
+    pdf_frames_list, pdf_win = [], None
+    if pdf_nav and pdf_paths:
+        rep("render", 74)
+        pdf_frames_list, pdf_win = pdf_content_frames(
+            pdf_paths, pdf_nav, os.path.join(work_dir, "sp"), OUT_W, OUT_H)
+
     def in_share(t):
         return any(a <= t < b for a, b in windows)
 
-    frames = [(t, p) for (t, p) in wb_frames if not in_share(t)] + ss_frames
+    def in_pdf(t):
+        return bool(pdf_win) and pdf_win[0] <= t < pdf_win[1]
+
+    frames = ([(t, p) for (t, p) in wb_frames if not in_share(t) and not in_pdf(t)]
+              + [(t, p) for (t, p) in pdf_frames_list if not in_share(t)]
+              + ss_frames)
     blank = os.path.join(work_dir, "blank0.png")
     Image.new("RGB", (OUT_W, OUT_H), "white").save(blank)
     if not frames or min(t for t, _ in frames) > 0.3:
