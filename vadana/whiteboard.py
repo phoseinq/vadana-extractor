@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from PIL import Image, ImageDraw, ImageFont
 
 NATIVE_W, NATIVE_H = 800, 600
+STROKE_WIDTH_MUL = 1.0
 FONT_CANDIDATES = (
     "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -170,7 +171,7 @@ def draw_shape(dr: ImageDraw.ImageDraw, s: Shape, scale: int, W: int, H: int) ->
                 continue
             if not pts or pts[-1] != (cx, cy):
                 pts.append((cx, cy))
-        w = max(2, int(round(s.width * scale * 1.4)))
+        w = max(2, int(round(s.width * scale * STROKE_WIDTH_MUL)))
         r = max(1, w // 2)
         if len(pts) == 1:
             x, y = pts[0]
@@ -216,9 +217,10 @@ def render_page(shapes, scale: int = 2, label: str | None = None, ss: int = 2,
         ImageDraw.Draw(im).text((8, 8), label, fill=(210, 210, 210), font=_font(20))
     return im
 
-def render_final_pages(wb: Whiteboard, scale: int = 2, backgrounds: dict | None = None) -> list[Image.Image]:
+def render_final_pages(wb: Whiteboard, scale: int = 2, backgrounds: dict | None = None,
+                       ss: int = 3) -> list[Image.Image]:
     backgrounds = backgrounds or {}
-    return [render_page(list(wb.final[p].values()), scale, f"page {i + 1}", bg=backgrounds.get(p))
+    return [render_page(list(wb.final[p].values()), scale, f"page {i + 1}", ss=ss, bg=backgrounds.get(p))
             for i, p in enumerate(wb.pages)]
 
 def pdf_backgrounds(pdf_paths, page_keys) -> dict:
@@ -332,12 +334,13 @@ def load_pointer(zf: zipfile.ZipFile) -> list[tuple[int, float, float, bool]]:
     out.sort()
     return out
 
-def make_pdf(zf: zipfile.ZipFile, out_path: str, scale: int = 2,
+def make_pdf(zf: zipfile.ZipFile, out_path: str, scale: int = 6,
              thumb_path: str | None = None, pdf_paths=None) -> str | None:
-    """Render the whiteboard's final pages to a PDF. None if no whiteboard content.
-    If thumb_path is given, the first page is also written there as a small JPEG
-    (Telegram thumbnail: <=320px). pdf_paths: shared PDFs to use as page backgrounds
-    when the professor annotated a document (page-count must match the board)."""
+    """Render the whiteboard's final pages to a PDF (high-res raster, scale 6 / 3x
+    supersample). None if no whiteboard content. If thumb_path is given, the first page
+    is also written there as a small JPEG (Telegram thumbnail: <=320px). pdf_paths:
+    shared PDFs to use as page backgrounds when the professor annotated a document
+    (page-count must match the board)."""
     wb = load_from_package(zf)
     if not wb.pages:
         return None

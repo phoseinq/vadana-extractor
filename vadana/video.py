@@ -39,14 +39,21 @@ def _pmap(func, items, workers):
         return [func(x) for x in items]
 
 def _wb16_fit(job):
-    """Fit one rendered whiteboard frame onto the 16:9 output canvas (pool worker)."""
+    """Fit one rendered whiteboard frame onto the 16:9 output canvas (pool worker).
+    One LANCZOS resize from the supersampled source straight to the fitted box, so
+    diagonal and curved strokes stay anti-aliased; the old stretch-then-shrink path
+    spent most of the supersampling on the horizontal stretch and left the writing
+    stair-stepped."""
     p, out, content_aspect, ow, oh = job
     im = Image.open(p).convert("RGB")
-    if content_aspect:
-        im = im.resize((round(im.height * content_aspect), im.height), Image.LANCZOS)
-    im.thumbnail((ow, oh), Image.LANCZOS)
+    a = content_aspect or (im.width / im.height)
+    if a >= ow / oh:
+        fw, fh = ow, max(1, round(ow / a))
+    else:
+        fw, fh = max(1, round(oh * a)), oh
+    im = im.resize((fw, fh), Image.LANCZOS)
     sheet = Image.new("RGB", (ow, oh), "white")
-    sheet.paste(im, ((ow - im.width) // 2, (oh - im.height) // 2))
+    sheet.paste(im, ((ow - fw) // 2, (oh - fh) // 2))
     sheet.save(out)
     return out
 
@@ -65,6 +72,46 @@ def _pdf_overlay(job):
         dr.ellipse([px - r, py - r, px + r, py + r], fill=(220, 0, 0, 235))
     im.save(out)
     return out
+
+_ENCODER = None
+
+def _detect_encoder() -> str:
+    """Pick an H.264 encoder: a working GPU one (NVENC/QSV/AMF) when the machine has
+    it, else CPU libx264. VIDEO_ENCODER env forces a choice. With a GPU encoder the
+    video is encoded on the GPU while the CPU handles the audio denoise in the same
+    ffmpeg run — the two overlap."""
+    forced = os.environ.get("VIDEO_ENCODER")
+    if forced:
+        return forced
+    for enc in ("h264_nvenc", "h264_qsv", "h264_amf"):
+        try:
+            r = subprocess.run(
+                ["ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+                 "-i", "color=c=black:s=256x256:d=0.1", "-c:v", enc, "-f", "null", "-"],
+                capture_output=True, timeout=25)
+            if r.returncode == 0:
+                return enc
+        except Exception:
+            pass
+    return "libx264"
+
+def _encoder() -> str:
+    global _ENCODER
+    if _ENCODER is None:
+        _ENCODER = _detect_encoder()
+    return _ENCODER
+
+def _vcodec_args() -> list:
+    """ffmpeg -c:v args for the chosen encoder, tuned for near-x264 quality (text stays
+    crisp). GPU encoders fall back to libx264 if absent."""
+    enc = _encoder()
+    if enc == "h264_nvenc":
+        return ["-c:v", "h264_nvenc", "-preset", "p6", "-rc", "vbr", "-cq", "23", "-b:v", "0", "-profile:v", "high"]
+    if enc == "h264_qsv":
+        return ["-c:v", "h264_qsv", "-global_quality", "23", "-preset", "medium"]
+    if enc == "h264_amf":
+        return ["-c:v", "h264_amf", "-rc", "cqp", "-qp_i", "22", "-qp_p", "22", "-quality", "quality"]
+    return ["-c:v", "libx264", "-preset", "veryfast", "-crf", "26"]
 
 def _blank(scale):
     return Image.new("RGB", (NATIVE_W * scale, NATIVE_H * scale), "white")
@@ -114,68 +161,87 @@ def build_frames(wb: Whiteboard, frames_dir: str, scale: int = 2,
 
     frames: list[tuple[float, str]] = []
     idx = 0
+    from concurrent.futures import ThreadPoolExecutor
+    pool = ThreadPoolExecutor(max_workers=RENDER_WORKERS) if RENDER_WORKERS > 1 else None
+    pending: list = []
 
     def emit(t_ms, page):
         nonlocal idx
         path = os.path.join(frames_dir, f"f{idx:06d}.png")
-        page_canvas[page].copy().save(path)
+        snap = page_canvas[page].copy()
+        if pool is None:
+            snap.save(path)
+        else:
+            if len(pending) >= 2 * RENDER_WORKERS:
+                pending.pop(0).result()
+            pending.append(pool.submit(snap.save, path))
         frames.append((t_ms / 1000.0, path))
         idx += 1
+
+    def _drain():
+        for f in pending:
+            f.result()
+        pending.clear()
 
     last_emit = -1e9
     nav = _clean_nav(getattr(wb, "nav", None) or [])
 
-    if nav:
-        stream = ([(t, 0, ("show", p)) for (t, p) in nav]
-                  + [(t, 1, ("draw", pg, sid, sh)) for (t, pg, sid, sh) in wb.events])
-        stream.sort(key=lambda e: (e[0], e[1]))
-        total = len(stream) or 1
-        displayed = None
-        for ev_i, (t, _, pl) in enumerate(stream, 1):
-            if pl[0] == "show":
-                page = pl[1]
-                ensure(page)
-                if page != displayed:
-                    displayed = page
-                    emit(t, page)
-                    last_emit = t
-            else:
-                _, page, sid, shape = pl
-                ensure(page)
-                if shape is None:
-                    page_shapes[page].pop(sid, None)
-                    repaint(page)
+    try:
+        if nav:
+            stream = ([(t, 0, ("show", p)) for (t, p) in nav]
+                      + [(t, 1, ("draw", pg, sid, sh)) for (t, pg, sid, sh) in wb.events])
+            stream.sort(key=lambda e: (e[0], e[1]))
+            total = len(stream) or 1
+            displayed = None
+            for ev_i, (t, _, pl) in enumerate(stream, 1):
+                if pl[0] == "show":
+                    page = pl[1]
+                    ensure(page)
+                    if page != displayed:
+                        displayed = page
+                        emit(t, page)
+                        last_emit = t
                 else:
-                    page_shapes[page][sid] = shape
-                    wb_mod.draw_shape(page_draw[page], shape, scale, W, H)
-                if page == displayed and t - last_emit >= interval:
-                    emit(t, page)
-                    last_emit = t
-            if progress and ev_i % 15 == 0:
-                progress(ev_i, total)
-        if displayed is not None and (not frames or frames[-1][0] < wb.duration_ms / 1000.0):
-            emit(wb.duration_ms, displayed)
-        return frames
+                    _, page, sid, shape = pl
+                    ensure(page)
+                    if shape is None:
+                        page_shapes[page].pop(sid, None)
+                        repaint(page)
+                    else:
+                        page_shapes[page][sid] = shape
+                        wb_mod.draw_shape(page_draw[page], shape, scale, W, H)
+                    if page == displayed and t - last_emit >= interval:
+                        emit(t, page)
+                        last_emit = t
+                if progress and ev_i % 15 == 0:
+                    progress(ev_i, total)
+            if displayed is not None and (not frames or frames[-1][0] < wb.duration_ms / 1000.0):
+                emit(wb.duration_ms, displayed)
+            return frames
 
-    current_page = None
-    total_ev = len(wb.events) or 1
-    for ev_i, (t, page, sid, shape) in enumerate(wb.events, 1):
-        ensure(page)
-        if shape is None:
-            page_shapes[page].pop(sid, None)
-            repaint(page)
-        else:
-            page_shapes[page][sid] = shape
-            wb_mod.draw_shape(page_draw[page], shape, scale, W, H)
-        current_page = page
-        if t - last_emit >= interval:
-            emit(t, page)
-            last_emit = t
-        if progress and ev_i % 15 == 0:
-            progress(ev_i, total_ev)
-    if current_page is not None and (not frames or frames[-1][0] < wb.duration_ms / 1000.0):
-        emit(wb.duration_ms, current_page)
-    return frames
+        current_page = None
+        total_ev = len(wb.events) or 1
+        for ev_i, (t, page, sid, shape) in enumerate(wb.events, 1):
+            ensure(page)
+            if shape is None:
+                page_shapes[page].pop(sid, None)
+                repaint(page)
+            else:
+                page_shapes[page][sid] = shape
+                wb_mod.draw_shape(page_draw[page], shape, scale, W, H)
+            current_page = page
+            if t - last_emit >= interval:
+                emit(t, page)
+                last_emit = t
+            if progress and ev_i % 15 == 0:
+                progress(ev_i, total_ev)
+        if current_page is not None and (not frames or frames[-1][0] < wb.duration_ms / 1000.0):
+            emit(wb.duration_ms, current_page)
+        return frames
+    finally:
+        _drain()
+        if pool is not None:
+            pool.shutdown()
 
 def _concat_file(frames, list_path, tail_seconds=3.0):
     """ffmpeg concat demuxer list with per-frame durations."""
@@ -350,8 +416,8 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
 
     master_s = max(_meta_seconds(zf, "mainstream.xml"), _meta_seconds(zf, "ftcontent1.xml"),
                    wb.duration_ms / 1000.0)
-    OUT_W, OUT_H = 1920, 1080
-    RENDER_SCALE = 3
+    OUT_W, OUT_H = 2560, 1440
+    RENDER_SCALE = 4
 
     rep("audio", 10)
     audio_path = tl.build_master_audio(zf, streams, work_dir, os.path.join(work_dir, "master.m4a"))
@@ -437,7 +503,7 @@ def _mux_timed(frames, audio_path, out_path, workdir, master_s, progress=None):
            "-f", "concat", "-safe", "0", "-i", list_path]
     if audio_path:
         cmd += ["-i", audio_path]
-    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "26",
+    cmd += _vcodec_args() + ["-pix_fmt", "yuv420p",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-r", "4", "-movflags", "+faststart",
             "-t", f"{master_s:.3f}"]
     if audio_path:
@@ -480,7 +546,7 @@ def mux(frames, audio_path, out_path, workdir, audio_skip_seconds=0.0, audio_off
         if audio_offset_ms:
             cmd += ["-itsoffset", f"{audio_offset_ms/1000.0:.3f}"]
         cmd += ["-i", audio_path]
-    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "26",
+    cmd += _vcodec_args() + ["-pix_fmt", "yuv420p",
             "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-movflags", "+faststart"]
     if out_fps:
         cmd += ["-r", str(out_fps)]

@@ -1,5 +1,13 @@
 # Changelog
 
+## v3.4.0
++ **Sharper, thinner whiteboard.** The handwriting now matches the original board: the pen is no longer drawn 40% too thick (the `1.4×` width is now `1.0×`), and diagonal/curved strokes are no longer stair-stepped — the board is rendered at a higher internal resolution and fitted to the frame in a single pass instead of being stretched wide and then shrunk (which spent most of the detail on the stretch).
++ **1440p video.** The synced video is now 2560×1440 instead of 1080p, so the board holds up when you zoom in to read a formula. The whiteboard render itself is unchanged; only the final frame size grew.
++ **Faster builds.** Saving the rendered frames — the real bottleneck, ~80% of the render stage — now runs across all CPU cores (PNG encoding releases the GIL), so the CPU is actually used instead of one core doing all the writing. On a 14-core machine a build that was 5.8 min dropped to ~3.5 min. (v3.3.0 had parallelised only the fit step, not the saving.)
++ **GPU video encoding.** On a machine with an NVIDIA / Intel / AMD GPU the final encode runs on the GPU (NVENC / QSV / AMF) while the CPU does the audio cleanup in the same pass. Quality matches the old CPU encode; with no usable GPU it falls back to libx264. Force a choice with the `VIDEO_ENCODER` env var.
++ **Higher-quality whiteboard PDF.** The exported whiteboard PDF is rendered at 4800×3600 per page with 3× supersampling (was 1600×1200), so the handwriting is crisp and smooth.
++ **Admin panel** (`/panel`, admins only). A small SQLite store keeps each user's request history (recording id + session, so a failed build can be reproduced); from the panel an admin can look a user up, message them with a reply button (two-way), ban/unban, and reset their daily quota.
+
 ## v3.3.0
 + **Parallel frame rendering.** Frame rendering — the one build stage that was still single-threaded — now runs across all CPU cores, sized automatically to the machine: the core count on a box with 4+ cores, sequential on smaller ones (so weak machines aren't burdened). ffmpeg's encode and denoise already use every core, so the whole pipeline now scales with the CPU. Measured on the 2-core test server, the render stage dropped **92s → 54s (1.7×)**; a 16-core machine renders that stage several times faster again. The Windows CLI gets it automatically. Override with the `RENDER_WORKERS` env var (e.g. `RENDER_WORKERS=1` to force sequential).
 

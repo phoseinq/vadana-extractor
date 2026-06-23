@@ -26,7 +26,7 @@ from aiogram.types import (
     InlineKeyboardMarkup, InlineKeyboardButton,
 )
 
-from bot import config, node_ca
+from bot import config, node_ca, db, panel
 from bot.nodes import NodeRegistry, should_offload, resolve_enabled
 from bot.node_api import start_node_api
 from bot.offload_bundle import build_job_bundle
@@ -61,6 +61,9 @@ def _store_load():
     return data
 
 STORE = _store_load()
+
+os.makedirs(config.CACHE_DIR, exist_ok=True)
+db.init(os.path.join(config.CACHE_DIR, "users.db"))
 
 def _store_save():
     os.makedirs(config.CACHE_DIR, exist_ok=True)
@@ -185,6 +188,8 @@ _session = AiohttpSession(api=TelegramAPIServer.from_base(config.LOCAL_API_URL))
 bot = Bot(config.BOT_TOKEN, session=_session)
 dp = Dispatcher()
 
+_touched: dict[int, float] = {}
+
 class ThrottleMiddleware(BaseMiddleware):
     """Per-user flood guard. At most BURST updates per WINDOW seconds; anything over
     that is dropped before any handler runs — so one user can't pin the server or
@@ -199,6 +204,27 @@ class ThrottleMiddleware(BaseMiddleware):
 
     async def __call__(self, handler, event, data):
         user = getattr(event, "from_user", None)
+        if user:
+            t = time.monotonic()
+            if t - _touched.get(user.id, 0) >= 60:
+                _touched[user.id] = t
+                try:
+                    db.touch_user(user.id, user.username, user.full_name)
+                except Exception:
+                    pass
+            try:
+                blocked = user.id not in config.ADMINS and db.is_banned(user.id)
+            except Exception:
+                blocked = False
+            if blocked:
+                try:
+                    if isinstance(event, CallbackQuery):
+                        await event.answer("⛔ دسترسیِ شما مسدود شده است.", show_alert=True)
+                    elif isinstance(event, Message):
+                        await event.reply("⛔ دسترسیِ شما به این ربات مسدود شده است.")
+                except Exception:
+                    pass
+                return
         if user and user.id not in config.ADMINS:
             now = time.monotonic()
             dq = self._hits[user.id]
@@ -431,6 +457,8 @@ async def _show(cb: CallbackQuery, text: str, markup=MENU):
         except Exception:
             pass
 
+panel.setup(dp, bot, db, STORE, _store_save, _video_used_today, _video_inc)
+
 @dp.message(CommandStart())
 async def start(m: Message):
     USER_MODE.pop(m.from_user.id, None)
@@ -616,6 +644,10 @@ async def _run_job(m, rec, mode, uid):
                 pass
     finally:
         log.info("job done: uid=%s mode=%s rec=%s ok=%s", uid, mode, rec.rec_id, ok)
+        try:
+            db.add_link(uid, rec.rec_id, rec.host, rec.token, mode, ok)
+        except Exception:
+            pass
         ACTIVE_USERS.discard(uid)
         ACTIVE_TASKS.pop(uid, None)
         ACTIVE_STOP.pop(uid, None)
@@ -716,7 +748,7 @@ async def do_whiteboard(m, rec, uid):
             prog.set(L_WB_RENDER, 80)
             pdfs = await asyncio.to_thread(download_slides, client, rec.rec_id,
                                            os.path.join(work, "pdfs"), zf, None, {".pdf"})
-            result = await asyncio.to_thread(wb_mod.make_pdf, zf, tmp, 2, thumb, pdfs or None)
+            result = await asyncio.to_thread(wb_mod.make_pdf, zf, tmp, 6, thumb, pdfs or None)
         stop.set(); await poller
         if result is None:
             await status.edit_text("ℹ️ این ضبط، وایت‌برد نداشت.\n"
