@@ -170,10 +170,12 @@ def _pdf_page_changes(nav, min_show_ms=800):
             out.append((t, p))
     return out or changes[-1:]
 
-def pdf_content_frames(pdf_paths, nav, frames_dir, out_w, out_h):
-    """Frames for an Adobe "Share PDF" pod: render the shared PDF's pages and emit
-    the page that was on screen at each page-change in nav. Returns (frames, window)
-    where window is the (start_s, end_s) the document occupied on the timeline."""
+def pdf_content_frames(pdf_paths, nav, pointer, frames_dir, out_w, out_h):
+    """Frames for an Adobe "Share PDF" pod: render the shared PDF's pages and overlay
+    the presenter's laser pointer (a moving dot) where they pointed. Emits a frame at
+    each page-change and pointer move. Returns (frames, window) — window is the
+    (start_s, end_s) the document occupied on the timeline."""
+    from PIL import ImageDraw
     import fitz
     os.makedirs(frames_dir, exist_ok=True)
     max_page = max((p for _, p in nav), default=0)
@@ -188,22 +190,46 @@ def pdf_content_frames(pdf_paths, nav, frames_dir, out_w, out_h):
     if not pick:
         return [], None
     doc = fitz.open(pick)
-    cache: dict[int, str] = {}
+    base: dict[int, tuple] = {}
 
-    def page_png(i):
+    def page_sheet(i):
         i = max(0, min(doc.page_count - 1, i))
-        if i not in cache:
+        if i not in base:
             pix = doc[i].get_pixmap(matrix=fitz.Matrix(2, 2))
             im = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
             im.thumbnail((out_w, out_h), Image.LANCZOS)
             sheet = Image.new("RGB", (out_w, out_h), "white")
-            sheet.paste(im, ((out_w - im.width) // 2, (out_h - im.height) // 2))
-            fp = os.path.join(frames_dir, f"p{i:04d}.png")
-            sheet.save(fp)
-            cache[i] = fp
-        return cache[i]
+            ox, oy = (out_w - im.width) // 2, (out_h - im.height) // 2
+            sheet.paste(im, (ox, oy))
+            base[i] = (sheet, (ox, oy, im.width, im.height))
+        return base[i]
 
-    frames = [(t / 1000.0, page_png(p)) for t, p in _pdf_page_changes(nav)]
+    pchanges = _pdf_page_changes(nav)
+    events = ([(t, 0, p) for t, p in pchanges]
+              + [(t, 1, (x, y, v)) for t, x, y, v in pointer])
+    events.sort(key=lambda e: (e[0], e[1]))
+    cur_page = pchanges[0][1] if pchanges else 0
+    cur_ptr = None
+    frames, k = [], 0
+    for t, kind, val in events:
+        if kind == 0:
+            cur_page = val
+        else:
+            cur_ptr = val
+        sheet, (ox, oy, pw, ph) = page_sheet(cur_page)
+        img = sheet
+        if cur_ptr and cur_ptr[2]:
+            px = ox + max(0.0, min(1.0, cur_ptr[0] / 100.0)) * pw
+            py = oy + max(0.0, min(1.0, cur_ptr[1] / 100.0)) * ph
+            img = sheet.copy()
+            dr = ImageDraw.Draw(img, "RGBA")
+            r = max(7, out_w // 150)
+            dr.ellipse([px - 2 * r, py - 2 * r, px + 2 * r, py + 2 * r], fill=(255, 45, 45, 70))
+            dr.ellipse([px - r, py - r, px + r, py + r], fill=(220, 0, 0, 235))
+        fp = os.path.join(frames_dir, f"f{k:05d}.png")
+        img.save(fp)
+        frames.append((t / 1000.0, fp))
+        k += 1
     window = (nav[0][0] / 1000.0, nav[-1][0] / 1000.0)
     doc.close()
     return frames, window
@@ -337,8 +363,9 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
     pdf_frames_list, pdf_win = [], None
     if pdf_nav and pdf_paths:
         rep("render", 74)
+        pointer = wb_mod.load_pointer(zf)
         pdf_frames_list, pdf_win = pdf_content_frames(
-            pdf_paths, pdf_nav, os.path.join(work_dir, "sp"), OUT_W, OUT_H)
+            pdf_paths, pdf_nav, pointer, os.path.join(work_dir, "sp"), OUT_W, OUT_H)
 
     def in_share(t):
         return any(a <= t < b for a, b in windows)

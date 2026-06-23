@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.2.1
++ Shared-PDF videos now also show the presenter's **laser pointer** — the moving dot they use to point at the document — overlaid on the PDF pages (`setPointerSo`). Persistent pen/ink annotations are a separate format and aren't covered yet.
+
 ## v3.2.0
 + **Shared-PDF recordings now render.** When the professor shares a PDF through Adobe's "Share PDF" pod (a `setPdfContentSo` stream), the video now shows that document — following its own page-change timeline — instead of a blank/white screen. Before, only the whiteboard and screen-share were drawn, so a lecture that was mostly a shared PDF came out white. Screen-share still takes precedence during its own periods, so a recording that starts on a PDF and switches to screen-sharing shows both halves correctly.
 

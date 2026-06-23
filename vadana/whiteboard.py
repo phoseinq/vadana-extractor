@@ -29,6 +29,7 @@ _PAGE_RE = re.compile(r"<String><!\[CDATA\[set_WB_So_(\d+)\]\]>")
 _PT_RE = re.compile(r"<x><!\[CDATA\[([^\]]*)\]\]></x>\s*<y><!\[CDATA\[([^\]]*)\]\]></y>")
 _CURPAGE_RE = re.compile(r"<name><!\[CDATA\[currentPage\]\]></name>\s*<newValue><!\[CDATA\[(\d+)\]\]></newValue>")
 _TPGNUM_RE = re.compile(r"tPgNum-(\d+)")
+_PTR_CHANGE_RE = re.compile(r"<name><!\[CDATA\[([^\]]+)\]\]></name>\s*<newValue><!\[CDATA\[([^\]]*)\]\]>")
 
 @dataclass
 class Shape:
@@ -300,6 +301,36 @@ def load_pdf_content(zf: zipfile.ZipFile) -> list[tuple[int, int]]:
                 nav.append((int(t_str), int(m.group(1))))
     nav.sort()
     return nav
+
+def load_pointer(zf: zipfile.ZipFile) -> list[tuple[int, float, float, bool]]:
+    """Laser-pointer track for a Share pod (setPointerSo): [(time_ms, x, y, visible)]
+    with x,y as 0-100 percent of the shared page. The presenter's pointer, rendered
+    as a moving dot over the document."""
+    out: list[tuple[int, float, float, bool]] = []
+    x = y = 50.0
+    vis = False
+    for name in sorted(n for n in zf.namelist() if re.fullmatch(r"ftcontent\d+\.xml", n)):
+        xml = zf.read(name).decode("utf-8", "replace")
+        if "setPointerSo" not in xml:
+            continue
+        for t_str, body in _MSG_RE.findall(xml):
+            if "setPointerSo" not in body:
+                continue
+            touched = False
+            for nm, nv in _PTR_CHANGE_RE.findall(body):
+                try:
+                    if nm == "x" and nv:
+                        x, touched = float(nv), True
+                    elif nm == "y" and nv:
+                        y, touched = float(nv), True
+                    elif nm == "visible":
+                        vis, touched = (nv == "true"), True
+                except ValueError:
+                    pass
+            if touched:
+                out.append((int(t_str), x, y, vis))
+    out.sort()
+    return out
 
 def make_pdf(zf: zipfile.ZipFile, out_path: str, scale: int = 2,
              thumb_path: str | None = None, pdf_paths=None) -> str | None:
