@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.3.0
++ **Parallel frame rendering.** Frame rendering — the one build stage that was still single-threaded — now runs across all CPU cores, sized automatically to the machine: the core count on a box with 4+ cores, sequential on smaller ones (so weak machines aren't burdened). ffmpeg's encode and denoise already use every core, so the whole pipeline now scales with the CPU. Measured on the 2-core test server, the render stage dropped **92s → 54s (1.7×)**; a 16-core machine renders that stage several times faster again. The Windows CLI gets it automatically. Override with the `RENDER_WORKERS` env var (e.g. `RENDER_WORKERS=1` to force sequential).
+
 ## v3.2.2
 + Fix a regression from v3.2.0: a recording that has **both** the professor's whiteboard writing and a shared-PDF pod showed the bare PDF instead of the writing. The whiteboard already renders the writing over the PDF, so it now takes precedence — the shared-PDF path is used only when there's no whiteboard.
 

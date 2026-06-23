@@ -11,6 +11,61 @@ from .whiteboard import Whiteboard, NATIVE_W, NATIVE_H
 
 DENOISE_AF = os.environ.get("AUDIO_DENOISE", "highpass=f=85,afftdn=nr=12:nf=-25,dynaudnorm=f=200:g=6")
 
+def _render_workers() -> int:
+    """How many processes to render frames with. RENDER_WORKERS env overrides; else
+    auto: the CPU count on a strong box (>=4 cores), otherwise 1 — so small machines
+    stay light and sequential, powerful ones build in parallel."""
+    v = os.environ.get("RENDER_WORKERS")
+    if v:
+        try:
+            return max(1, int(v))
+        except ValueError:
+            pass
+    n = os.cpu_count() or 1
+    return n if n >= 4 else 1
+
+RENDER_WORKERS = _render_workers()
+
+def _pmap(func, items, workers):
+    """Map func over items in a process pool when workers>1, else sequentially. Falls
+    back to sequential on any pool error, so a constrained box never breaks."""
+    if workers <= 1 or len(items) < 2:
+        return [func(x) for x in items]
+    try:
+        from concurrent.futures import ProcessPoolExecutor
+        with ProcessPoolExecutor(max_workers=workers) as ex:
+            return list(ex.map(func, items, chunksize=max(1, len(items) // (workers * 4))))
+    except Exception:
+        return [func(x) for x in items]
+
+def _wb16_fit(job):
+    """Fit one rendered whiteboard frame onto the 16:9 output canvas (pool worker)."""
+    p, out, content_aspect, ow, oh = job
+    im = Image.open(p).convert("RGB")
+    if content_aspect:
+        im = im.resize((round(im.height * content_aspect), im.height), Image.LANCZOS)
+    im.thumbnail((ow, oh), Image.LANCZOS)
+    sheet = Image.new("RGB", (ow, oh), "white")
+    sheet.paste(im, ((ow - im.width) // 2, (oh - im.height) // 2))
+    sheet.save(out)
+    return out
+
+def _pdf_overlay(job):
+    """Render one shared-PDF frame: the cached base page plus the laser dot (pool worker)."""
+    base_png, out, ptr, geom = job
+    im = Image.open(base_png).convert("RGB")
+    if ptr:
+        from PIL import ImageDraw
+        ox, oy, pw, ph = geom
+        px = ox + max(0.0, min(1.0, ptr[0] / 100.0)) * pw
+        py = oy + max(0.0, min(1.0, ptr[1] / 100.0)) * ph
+        r = max(7, im.width // 150)
+        dr = ImageDraw.Draw(im, "RGBA")
+        dr.ellipse([px - 2 * r, py - 2 * r, px + 2 * r, py + 2 * r], fill=(255, 45, 45, 70))
+        dr.ellipse([px - r, py - r, px + r, py + r], fill=(220, 0, 0, 235))
+    im.save(out)
+    return out
+
 def _blank(scale):
     return Image.new("RGB", (NATIVE_W * scale, NATIVE_H * scale), "white")
 
@@ -175,9 +230,10 @@ def pdf_content_frames(pdf_paths, nav, pointer, frames_dir, out_w, out_h):
     the presenter's laser pointer (a moving dot) where they pointed. Emits a frame at
     each page-change and pointer move. Returns (frames, window) — window is the
     (start_s, end_s) the document occupied on the timeline."""
-    from PIL import ImageDraw
     import fitz
     os.makedirs(frames_dir, exist_ok=True)
+    pages_dir = os.path.join(frames_dir, "pages")
+    os.makedirs(pages_dir, exist_ok=True)
     max_page = max((p for _, p in nav), default=0)
     cands = []
     for p in dict.fromkeys(pdf_paths or []):
@@ -192,7 +248,7 @@ def pdf_content_frames(pdf_paths, nav, pointer, frames_dir, out_w, out_h):
     doc = fitz.open(pick)
     base: dict[int, tuple] = {}
 
-    def page_sheet(i):
+    def base_of(i):
         i = max(0, min(doc.page_count - 1, i))
         if i not in base:
             pix = doc[i].get_pixmap(matrix=fitz.Matrix(2, 2))
@@ -201,7 +257,9 @@ def pdf_content_frames(pdf_paths, nav, pointer, frames_dir, out_w, out_h):
             sheet = Image.new("RGB", (out_w, out_h), "white")
             ox, oy = (out_w - im.width) // 2, (out_h - im.height) // 2
             sheet.paste(im, (ox, oy))
-            base[i] = (sheet, (ox, oy, im.width, im.height))
+            bp = os.path.join(pages_dir, f"b{i:04d}.png")
+            sheet.save(bp)
+            base[i] = (bp, (ox, oy, im.width, im.height))
         return base[i]
 
     pchanges = _pdf_page_changes(nav)
@@ -210,28 +268,20 @@ def pdf_content_frames(pdf_paths, nav, pointer, frames_dir, out_w, out_h):
     events.sort(key=lambda e: (e[0], e[1]))
     cur_page = pchanges[0][1] if pchanges else 0
     cur_ptr = None
-    frames, k = [], 0
+    jobs, times = [], []
     for t, kind, val in events:
         if kind == 0:
             cur_page = val
         else:
             cur_ptr = val
-        sheet, (ox, oy, pw, ph) = page_sheet(cur_page)
-        img = sheet
-        if cur_ptr and cur_ptr[2]:
-            px = ox + max(0.0, min(1.0, cur_ptr[0] / 100.0)) * pw
-            py = oy + max(0.0, min(1.0, cur_ptr[1] / 100.0)) * ph
-            img = sheet.copy()
-            dr = ImageDraw.Draw(img, "RGBA")
-            r = max(7, out_w // 150)
-            dr.ellipse([px - 2 * r, py - 2 * r, px + 2 * r, py + 2 * r], fill=(255, 45, 45, 70))
-            dr.ellipse([px - r, py - r, px + r, py + r], fill=(220, 0, 0, 235))
-        fp = os.path.join(frames_dir, f"f{k:05d}.png")
-        img.save(fp)
-        frames.append((t / 1000.0, fp))
-        k += 1
-    window = (nav[0][0] / 1000.0, nav[-1][0] / 1000.0)
+        bp, geom = base_of(cur_page)
+        ptr = (cur_ptr[0], cur_ptr[1]) if (cur_ptr and cur_ptr[2]) else None
+        jobs.append((bp, os.path.join(frames_dir, f"f{len(jobs):05d}.png"), ptr, geom))
+        times.append(t / 1000.0)
     doc.close()
+    outs = _pmap(_pdf_overlay, jobs, RENDER_WORKERS)
+    frames = list(zip(times, outs))
+    window = (nav[0][0] / 1000.0, nav[-1][0] / 1000.0)
     return frames, window
 
 def make_media_video(zf, work_dir, out_path, pdf_paths=None, scale: int = 2, progress=None):
@@ -319,19 +369,11 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
                            backgrounds=backgrounds)
         sheet_dir = os.path.join(work_dir, "wb16")
         os.makedirs(sheet_dir, exist_ok=True)
-        nraw = len(raw) or 1
-        for i, (t, p) in enumerate(raw):
-            im = Image.open(p).convert("RGB")
-            if content_aspect:
-                im = im.resize((round(im.height * content_aspect), im.height), Image.LANCZOS)
-            im.thumbnail((OUT_W, OUT_H), Image.LANCZOS)
-            sheet = Image.new("RGB", (OUT_W, OUT_H), "white")
-            sheet.paste(im, ((OUT_W - im.width) // 2, (OUT_H - im.height) // 2))
-            fp = os.path.join(sheet_dir, f"{i:06d}.png")
-            sheet.save(fp)
-            wb_frames.append((t, fp))
-            if i % 8 == 0:
-                rep("render", 50 + int(10 * i / nraw))
+        jobs = [(p, os.path.join(sheet_dir, f"{i:06d}.png"), content_aspect, OUT_W, OUT_H)
+                for i, (t, p) in enumerate(raw)]
+        outs = _pmap(_wb16_fit, jobs, RENDER_WORKERS)
+        wb_frames = [(raw[i][0], outs[i]) for i in range(len(raw))]
+        rep("render", 60)
 
     rep("render", 62)
     ss_dir = os.path.join(work_dir, "ss")
