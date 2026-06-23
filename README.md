@@ -82,6 +82,8 @@ One command on the server. It asks Docker or native, installs everything (ffmpeg
 curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/install.sh | bash
 ```
 
+> **Docker** runs the published image `ghcr.io/phoseinq/vadana-extractor:latest` (CI pushes it on every release), so a Docker install — and `docker compose pull` — needs no local build; `build:` stays as a fallback.
+
 Then fill in `bot/.env` (run `vadana env`, or edit it for Docker) and start. The settings:
 
 | Variable | Meaning |
@@ -133,9 +135,8 @@ Where to look: `bot/bot.py` (handlers, the two semaphores, the live-progress pol
 When the master's single video slot is busy, it can hand the heavy build to a remote **worker node** over mutually-authenticated TLS, so fewer jobs wait in the queue. The node is pure CPU + ffmpeg — it holds no Iran proxy and no Telegram token; the master ships it the recording package plus the shared PDFs in one bundle, the node renders, and posts the mp4 back. **Off by default — with no node connected, the master builds everything itself, exactly as before.**
 
 ```bash
-vadana node init --host <MASTER_IP>          # once: create the CA + server cert
-vadana node add mynode --host <MASTER_IP>    # issue a node cert + print a bundle to copy
-vadana node status                            # which nodes are connected right now
+vadana node add mynode       # issue a node cert + print one enrollment bundle (master IP auto-detected)
+vadana node status            # which nodes are connected right now (live)
 ```
 
 The node API turns **on automatically** once a node is registered (and off when the last one is removed) — `vadana node add`/`remove` restart the bot to apply. Force it with `vadana node on|off|auto`. The interactive `vadana` menu has a **Workers** section for all of this. The node side lives in its own repo: **[vadana-node](https://github.com/phoseinq/vadana-node)** (worker + Docker, multi-worker with `--workers`). Config:
@@ -223,6 +224,8 @@ python cli/make_video.py "<url>" --pages-only                  # فقط صفحه
 curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/install.sh | bash
 ```
 
+> **داکر** ایمیجِ منتشرشدهٔ `ghcr.io/phoseinq/vadana-extractor:latest` را اجرا می‌کند (CI روی هر ریلیز پوش می‌کند)، پس نصبِ داکری — و `docker compose pull` — بدونِ build است؛ `build:` هم به‌عنوانِ fallback می‌ماند.
+
 بعد `bot/.env` را پر کن (با `vadana env`، یا برای داکر دستی ویرایشش کن) و راه بینداز. تنظیمات:
 
 | متغیر | توضیح |
@@ -255,9 +258,8 @@ curl -fsSL https://raw.githubusercontent.com/phoseinq/vadana-extractor/main/inst
 وقتی تنها اسلاتِ ویدیوی مستر پر است، می‌تواند ساختِ سنگین را روی mTLS به یک **نودِ کارگرِ** دور بسپارد تا فایلِ کمتری در صف بماند. نود فقط CPU و ffmpeg است — پروکسیِ ایران و توکنِ تلگرام ندارد؛ مستر پکیجِ ضبط را همراهِ PDFهای اشتراکی در یک باندل می‌فرستد، نود رِندر می‌کند و MP4 را برمی‌گرداند. **پیش‌فرض خاموش — بدونِ نود، مستر دقیقاً مثلِ قبل خودش همه‌چیز را می‌سازد.**
 
 ```bash
-vadana node init --host <MASTER_IP>          # یک‌بار: ساختِ CA و گواهیِ سرور
-vadana node add mynode --host <MASTER_IP>    # صدورِ گواهیِ نود + چاپِ باندلِ آماده
-vadana node status                            # کدام نودها همین الان وصل‌اند
+vadana node add mynode       # صدورِ گواهیِ نود + چاپِ یک باندلِ ثبت‌نام (آی‌پیِ مستر خودکار)
+vadana node status            # کدام نودها همین الان وصل‌اند (زنده)
 ```
 
 APIِ نود **خودکار** روشن می‌شود وقتی حداقل یک نود ثبت شده باشد (و با حذفِ آخرین نود خاموش) — `add`/`remove` ربات را ری‌استارت می‌کنند تا اعمال شود. دستیِ‌اش: `vadana node on|off|auto`. منوی تعاملیِ `vadana` هم بخشِ **Workers** دارد. سمتِ نود ریپوی جداست: **[vadana-node](https://github.com/phoseinq/vadana-node)** (worker + Docker، چند-ورکر با `--workers`). تنظیماتِ مستر: `NODE_API_ENABLE` (override؛ پیش‌فرض auto)، `NODE_API_PORT` (۸۴۴۳)، `HEARTBEAT_TTL` (۳۰ث)، `CLAIM_TTL` (۱۲۰۰ث).
