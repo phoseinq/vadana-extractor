@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.1.6
++ Video build no longer fails on recordings that contain an empty screen-share clip. Some Adobe screen-shares are a tiny stub with no video stream; ffmpeg exited non-zero on it and the whole job died. Such a clip is now skipped (the whiteboard shows through that span) instead of aborting the build.
+
 ## v3.1.5
 + The Docker setup pulls the prebuilt image instead of building: compose references `ghcr.io/phoseinq/vadana-extractor:latest` (CI publishes it on every release) with `build:` kept as a local fallback, and the installer pulls first and only builds if the pull fails. So `docker compose pull` works and a fresh Docker install skips the local build.
 

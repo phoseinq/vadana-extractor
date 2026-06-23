@@ -270,15 +270,16 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
             f.write(data)
         start = s["start_ms"] / 1000.0
         dur = _meta_seconds(zf, s["name"] + ".xml") or 60.0
-        windows.append((start, start + dur))
         pat = os.path.join(ss_dir, f"{si}_%05d.png")
         subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", p, "-vf",
                         f"fps=1,scale={OUT_W}:{OUT_H}:force_original_aspect_ratio=decrease,"
-                        f"pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2:color=black", pat], check=True)
+                        f"pad={OUT_W}:{OUT_H}:(ow-iw)/2:(oh-ih)/2:color=black", pat], check=False)
         k = 0
         while os.path.exists(os.path.join(ss_dir, f"{si}_{k + 1:05d}.png")):
             ss_frames.append((start + k, os.path.join(ss_dir, f"{si}_{k + 1:05d}.png")))
             k += 1
+        if k:
+            windows.append((start, start + dur))
 
     def in_share(t):
         return any(a <= t < b for a, b in windows)
