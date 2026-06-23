@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.2.2
++ Fix a regression from v3.2.0: a recording that has **both** the professor's whiteboard writing and a shared-PDF pod showed the bare PDF instead of the writing. The whiteboard already renders the writing over the PDF, so it now takes precedence — the shared-PDF path is used only when there's no whiteboard.
+
 ## v3.2.1
 + Shared-PDF videos now also show the presenter's **laser pointer** — the moving dot they use to point at the document — overlaid on the PDF pages (`setPointerSo`). Persistent pen/ink annotations are a separate format and aren't covered yet.
 

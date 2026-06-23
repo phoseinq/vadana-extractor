@@ -22,7 +22,7 @@ from vadana.connect import parse_recording_url, ConnectClient, is_valid_recordin
 from vadana.slides import download_slides
 from vadana import whiteboard as wb_mod
 
-app = FastAPI(title="Vadana Extractor", version="3.2.1")
+app = FastAPI(title="Vadana Extractor", version="3.2.2")
 
 
 class ExtractRequest(BaseModel):

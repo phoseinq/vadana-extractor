@@ -361,7 +361,7 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
             windows.append((start, start + dur))
 
     pdf_frames_list, pdf_win = [], None
-    if pdf_nav and pdf_paths:
+    if pdf_nav and pdf_paths and not wb.pages:
         rep("render", 74)
         pointer = wb_mod.load_pointer(zf)
         pdf_frames_list, pdf_win = pdf_content_frames(
