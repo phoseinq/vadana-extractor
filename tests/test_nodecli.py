@@ -45,14 +45,14 @@ def test_mode_on_off_auto(tmp_path):
     assert not os.path.exists(os.path.join(d, "mode"))      # auto = no override file
 
 
-def test_status_reports_registered_and_offline(tmp_path, capsys):
+def test_status_reports_registered_and_disconnected(tmp_path, capsys):
     d = str(tmp_path)
     nodecli.main(["init", "--dir", d])
     nodecli.main(["add", "n1", "--dir", d])
     capsys.readouterr()
-    nodecli.main(["status", "--dir", d])                    # no bot running -> offline
+    nodecli.main(["status", "--dir", d])                    # no bot running -> disconnected
     out = capsys.readouterr().out
-    assert "n1" in out and "node API: ON" in out and "offline" in out
+    assert "n1" in out and "node API: ON" in out and "disconnected" in out
 
 
 def test_list_shows_registered(tmp_path, capsys):
