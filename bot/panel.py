@@ -33,6 +33,17 @@ def _fmt_ts(ts) -> str:
         return "—"
     return datetime.datetime.fromtimestamp(ts).strftime("%Y-%m-%d %H:%M")
 
+def _fmt_bytes(n) -> str:
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit in ("B", "KB") else f"{n:.1f} {unit}"
+        n /= 1024
+
+def _idlink(uid) -> str:
+    """The numeric id as a tap-to-open-profile link (works across clients)."""
+    return f'<a href="tg://user?id={uid}">{uid}</a>'
+
 def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
 
     def _who(uid: int) -> str:
@@ -52,15 +63,18 @@ def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
         banned = bool(u and u["banned"])
         links = u["links"] if u else 0
         ok = u["ok"] if u else 0
+        dl = u["dl"] if u else 0
+        ul = u["ul"] if u else 0
         first = u["first_ts"] if u else None
         last = u["last_ts"] if u else None
         head = (" @" + _esc(uname)) if uname else ""
         lines = [
             "🔧 <b>پنل ادمین — کاربر</b>",
             f"👤 {_esc(name)}{head}",
-            f"🆔 <code>{uid}</code>",
+            f'🆔 {_idlink(uid)} · <a href="tg://openmessage?user_id={uid}">💬 پیام</a>',
             f"📅 اولین: {_fmt_ts(first)} · آخرین: {_fmt_ts(last)}",
             f"📊 درخواست‌ها: {links} (موفق {ok})",
+            f"📦 دانلود {_fmt_bytes(dl)} · آپلود {_fmt_bytes(ul)}",
             f"🎬 ویدیوی امروز: {used}/{quota}",
             ("🚫 <b>وضعیت: مسدود</b>" if banned else "✅ وضعیت: فعال"),
         ]
@@ -92,10 +106,16 @@ def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
         if not _is_admin(m.from_user.id):
             return
         st = db.stats()
-        text = ("🔧 <b>پنل ادمین</b>\n\n"
-                f"👥 کاربرها: {st['users']}\n"
-                f"🔗 لینک‌ها: {st['links']}\n"
-                f"🚫 مسدودها: {st['banned']}\n\n"
+        v = st["modes"].get("video", 0)
+        w = st["modes"].get("wb", 0)
+        f = st["links"] - v - w
+        text = ("📊 <b>پنل ادمین — آمار کلی</b>\n\n"
+                f"👥 کاربرها: <b>{st['users']}</b>"
+                + (f" · 🚫 مسدود: {st['banned']}" if st["banned"] else "") + "\n"
+                f"🔗 درخواست‌ها: <b>{st['links']}</b>  (✅ {st['ok']} · ❌ {st['fail']})\n"
+                f"   🎬 ویدیو {v} · 📝 وایت‌برد {w} · 📂 فایل {f}\n"
+                f"⬇️ حجم دانلود: <b>{_fmt_bytes(st['dl'])}</b>\n"
+                f"⬆️ حجم آپلود: <b>{_fmt_bytes(st['ul'])}</b>\n\n"
                 "برای دیدنِ یک کاربر دکمهٔ زیر را بزنید و آیدیِ عددی یا @یوزرنیم را تایپ کنید.")
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔍 جستجوی کاربر", switch_inline_query_current_chat="")],
@@ -175,7 +195,7 @@ def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
         uid = int(cb.data.split(":")[1])
         _PENDING_MSG[cb.from_user.id] = uid
         await _edit(cb,
-                    f"✏️ متنِ پیام برای <b>{_esc(_who(uid))}</b> (<code>{uid}</code>) را بفرستید.\n\n"
+                    f"✏️ متنِ پیام برای <b>{_esc(_who(uid))}</b> ({_idlink(uid)}) را بفرستید.\n\n"
                     "بولد/مونو/ایتالیکِ تلگرام را همان‌جا استفاده کنید؛ خودم به HTML تبدیل و ارسال می‌کنم — "
                     "لازم نیست با تگ‌ها ور بروید.\nبرای لغو: /cancel",
                     None)
@@ -223,7 +243,7 @@ def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
             await m.reply("فقط متن. دوباره دکمهٔ پاسخ را بزنید.")
             return
         who = ("@" + m.from_user.username) if m.from_user.username else (m.from_user.full_name or str(uid))
-        head = f"💬 <b>پاسخ از</b> {_esc(who)} (<code>{uid}</code>):\n\n"
+        head = f"💬 <b>پاسخ از</b> {_esc(who)} ({_idlink(uid)}):\n\n"
         kb = InlineKeyboardMarkup(inline_keyboard=[[_btn("✉️ پاسخ", f"pmsg:{uid}", "primary")]])
         targets = [aid] + [a for a in config.ADMINS if a != aid]
         sent = False

@@ -33,6 +33,10 @@ def init(path: str) -> None:
             ts      INTEGER);
         CREATE INDEX IF NOT EXISTS links_uid_ts ON links(uid, ts);
     """)
+    cols = [r[1] for r in _conn.execute("PRAGMA table_info(links)").fetchall()]
+    for col in ("dl_bytes", "ul_bytes"):
+        if col not in cols:
+            _conn.execute(f"ALTER TABLE links ADD COLUMN {col} INTEGER DEFAULT 0")
     _conn.commit()
     if fresh:
         try:
@@ -51,11 +55,14 @@ def touch_user(uid: int, username: str | None, name: str | None) -> None:
             (uid, username or "", name or "", now, now))
         _conn.commit()
 
-def add_link(uid: int, rec_id: str, host: str, token: str | None, mode: str, ok: bool) -> None:
+def add_link(uid: int, rec_id: str, host: str, token: str | None, mode: str, ok: bool,
+             dl_bytes: int = 0, ul_bytes: int = 0) -> None:
     with _lock:
         _conn.execute(
-            "INSERT INTO links(uid,rec_id,host,token,mode,ok,ts) VALUES(?,?,?,?,?,?,?)",
-            (uid, rec_id, host or "", token or "", mode, 1 if ok else 0, int(time.time())))
+            "INSERT INTO links(uid,rec_id,host,token,mode,ok,ts,dl_bytes,ul_bytes) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
+            (uid, rec_id, host or "", token or "", mode, 1 if ok else 0, int(time.time()),
+             int(dl_bytes or 0), int(ul_bytes or 0)))
         _conn.commit()
 
 def set_ban(uid: int, banned: bool) -> None:
@@ -78,11 +85,13 @@ def get_user(uid: int) -> dict | None:
             "SELECT uid,username,name,first_ts,last_ts,banned FROM users WHERE uid=?",
             (uid,)).fetchone()
         cnt = _conn.execute(
-            "SELECT COUNT(*), COALESCE(SUM(ok),0) FROM links WHERE uid=?", (uid,)).fetchone()
+            "SELECT COUNT(*), COALESCE(SUM(ok),0), COALESCE(SUM(dl_bytes),0), "
+            "COALESCE(SUM(ul_bytes),0) FROM links WHERE uid=?", (uid,)).fetchone()
     if not r:
         return None
     return {"uid": r[0], "username": r[1], "name": r[2], "first_ts": r[3],
-            "last_ts": r[4], "banned": bool(r[5]), "links": cnt[0], "ok": cnt[1]}
+            "last_ts": r[4], "banned": bool(r[5]), "links": cnt[0], "ok": cnt[1],
+            "dl": cnt[2], "ul": cnt[3]}
 
 def recent_links(uid: int, n: int = 5) -> list[dict]:
     with _lock:
@@ -114,9 +123,13 @@ def search_users(q: str, n: int = 12) -> list[dict]:
 def stats() -> dict:
     with _lock:
         u = _conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-        ln = _conn.execute("SELECT COUNT(*) FROM links").fetchone()[0]
         b = _conn.execute("SELECT COUNT(*) FROM users WHERE banned=1").fetchone()[0]
-    return {"users": u, "links": ln, "banned": b}
+        r = _conn.execute(
+            "SELECT COUNT(*), COALESCE(SUM(ok),0), COALESCE(SUM(dl_bytes),0), "
+            "COALESCE(SUM(ul_bytes),0) FROM links").fetchone()
+        modes = dict(_conn.execute("SELECT mode, COUNT(*) FROM links GROUP BY mode").fetchall())
+    return {"users": u, "banned": b, "links": r[0], "ok": r[1], "fail": r[0] - r[1],
+            "dl": r[2], "ul": r[3], "modes": modes}
 
 def _demo() -> None:
     import tempfile
@@ -124,9 +137,14 @@ def _demo() -> None:
     init(p)
     touch_user(7, "swan", "🦢")
     add_link(7, "lk9l06g01mos", "https://vadavc30.ec.iau.ir", "abc123", "video", False)
-    add_link(7, "l92cnur34luk", "https://vadavc30.ec.iau.ir", "xy", "video", True)
+    add_link(7, "l92cnur34luk", "https://vadavc30.ec.iau.ir", "xy", "video", True,
+             dl_bytes=120_000_000, ul_bytes=70_000_000)
     u = get_user(7)
     assert u["uid"] == 7 and u["username"] == "swan" and u["links"] == 2 and u["ok"] == 1, u
+    assert u["dl"] == 120_000_000 and u["ul"] == 70_000_000, u
+    s = stats()
+    assert s["users"] == 1 and s["links"] == 2 and s["ok"] == 1 and s["fail"] == 1, s
+    assert s["dl"] == 120_000_000 and s["ul"] == 70_000_000 and s["modes"]["video"] == 2, s
     assert recent_links(7)[0]["rec_id"] == "l92cnur34luk"
     assert search_users("swan")[0]["uid"] == 7
     assert search_users("7")[0]["uid"] == 7

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import asyncio
+import html
 import json
 import logging
 import os
@@ -415,22 +416,25 @@ async def _archive(path, thumb=None, uid=None, link=None):
     (username + numeric id) and the recording link — for the admin's reference.
     Sent as plain text (no parse_mode), so user-controlled values can't inject."""
     name = os.path.basename(path)
-    caption = name
+    caption = html.escape(name)
     if uid is not None:
         try:
             ch = await bot.get_chat(uid)
             who = f"@{ch.username}" if ch.username else (ch.full_name or "—")
         except Exception:
             who = "—"
-        caption = f"{name}\n👤 {who}\n🆔 {uid}"
+        caption = (f"{html.escape(name)}\n👤 {html.escape(who)}\n"
+                   f"🆔 <a href=\"tg://user?id={uid}\">{uid}</a> · "
+                   f"<a href=\"tg://openmessage?user_id={uid}\">💬 پیام</a>")
         if link:
-            caption += f"\n🔗 {link}"
+            caption += f"\n🔗 {html.escape(link)}"
     th = FSInputFile(thumb) if thumb and os.path.exists(thumb) else None
     if os.path.splitext(path)[1].lower() in VIDEO_EXTS:
-        msg = await bot.send_video(config.STORAGE_CHANNEL, FSInputFile(path),
-                                   caption=caption, supports_streaming=True, thumbnail=th)
+        msg = await bot.send_video(config.STORAGE_CHANNEL, FSInputFile(path), caption=caption,
+                                   parse_mode="HTML", supports_streaming=True, thumbnail=th)
         return msg.video.file_id, True
-    msg = await bot.send_document(config.STORAGE_CHANNEL, FSInputFile(path), caption=caption, thumbnail=th)
+    msg = await bot.send_document(config.STORAGE_CHANNEL, FSInputFile(path), caption=caption,
+                                  parse_mode="HTML", thumbnail=th)
     return msg.document.file_id, False
 
 async def _send_fid(m, fid, is_video, caption, markup=None) -> bool:
@@ -610,8 +614,15 @@ async def handle_link(m: Message):
     ACTIVE_USERS.add(uid)
     ACTIVE_TASKS[uid] = asyncio.create_task(_run_job(m, rec, mode, uid))
 
+_BYTES: dict[int, dict] = {}
+
+def _track_dl(uid, t):
+    if t and uid in _BYTES:
+        _BYTES[uid]["dl"] = int(t)
+
 async def _run_job(m, rec, mode, uid):
     ok = False
+    _BYTES[uid] = {"dl": 0, "ul": 0}
     log.info("job start: uid=%s mode=%s rec=%s", uid, mode, rec.rec_id)
     try:
         if mode == "video":
@@ -645,7 +656,9 @@ async def _run_job(m, rec, mode, uid):
     finally:
         log.info("job done: uid=%s mode=%s rec=%s ok=%s", uid, mode, rec.rec_id, ok)
         try:
-            db.add_link(uid, rec.rec_id, rec.host, rec.token, mode, ok)
+            b = _BYTES.pop(uid, {})
+            db.add_link(uid, rec.rec_id, rec.host, rec.token, mode, ok,
+                        b.get("dl", 0), b.get("ul", 0))
         except Exception:
             pass
         ACTIVE_USERS.discard(uid)
@@ -675,7 +688,7 @@ async def do_files(m, rec, ftype, uid):
                 client = ConnectClient(rec.host, rec.token, proxy=config.IRAN_PROXY)
                 prog.set(L_FETCH, 0)
                 zf = await asyncio.to_thread(client.open_package, rec.rec_id,
-                                             lambda g, t: prog.set(L_FETCH, (g / t * 70) if t else 35))
+                                             lambda g, t: (_track_dl(uid, t), prog.set(L_FETCH, (g / t * 70) if t else 35)))
                 prog.set(L_PREP, 75)
                 saved = await asyncio.to_thread(download_slides, client, rec.rec_id, tmp, zf,
                                                 lambda i, t: prog.set(L_PREP, 75 + i / t * 20))
@@ -684,6 +697,7 @@ async def do_files(m, rec, ftype, uid):
                 await status.edit_text("ℹ️ این جلسه هیچ فایلِ اشتراکی‌ای نداشت.\n"
                                        "اگر استاد روی وایت‌برد نوشته است، «📝 دانلود وایت‌برد» را انتخاب کنید. (/start)")
                 return
+            _BYTES.setdefault(uid, {})["ul"] = sum(os.path.getsize(p) for p in saved)
             manifest = []
             allf = sorted(saved)
             for i, p in enumerate(allf, 1):
@@ -744,7 +758,7 @@ async def do_whiteboard(m, rec, uid):
             client = ConnectClient(rec.host, rec.token, proxy=config.IRAN_PROXY)
             prog.set(L_FETCH, 0)
             zf = await asyncio.to_thread(client.open_package, rec.rec_id,
-                                         lambda g, t: prog.set(L_FETCH, (g / t * 72) if t else 35))
+                                         lambda g, t: (_track_dl(uid, t), prog.set(L_FETCH, (g / t * 72) if t else 35)))
             prog.set(L_WB_RENDER, 80)
             pdfs = await asyncio.to_thread(download_slides, client, rec.rec_id,
                                            os.path.join(work, "pdfs"), zf, None, {".pdf"})
@@ -755,7 +769,9 @@ async def do_whiteboard(m, rec, uid):
                                    "احتمالاً اسلاید بوده است — لطفاً «📂 دانلود فایل‌ها» را انتخاب کنید. (/start)")
             return
         await status.edit_text("📤 در حال ذخیره و ارسال…")
-        _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp))
+        sz = os.path.getsize(tmp)
+        _meta_put(rec.rec_id, date=_today_fa(), size=sz)
+        _BYTES.setdefault(uid, {})["ul"] = sz
         fid, _ = await _archive(tmp, thumb, uid, _full_link(rec))
         _store_put("wb", rec.rec_id, fid)
         await _send_fid(m, fid, False, _caption("📝 وایت‌بردِ کلاس", rec.rec_id),
@@ -870,7 +886,7 @@ async def do_video(m, rec, uid):
                 client = ConnectClient(rec.host, rec.token, proxy=config.IRAN_PROXY)
                 prog.set(L_FETCH, 0)
                 zf = await asyncio.to_thread(client.open_package, rec.rec_id,
-                                             lambda g, t: prog.set(L_FETCH, (g / t * 30) if t else 15))
+                                             lambda g, t: (_track_dl(uid, t), prog.set(L_FETCH, (g / t * 30) if t else 15)))
                 prog.set(STAGE["parse"], 32)
                 sl = os.path.join(work, "pdfs")
                 pdfs = await asyncio.to_thread(download_slides, client, rec.rec_id, sl, zf, None, {".pdf"})
@@ -886,7 +902,9 @@ async def do_video(m, rec, uid):
         await status.edit_text("📤 در حال ذخیره و ارسال…")
         os.makedirs(work, exist_ok=True)
         dur = await asyncio.to_thread(audio_mod.duration_seconds, tmp_out)
-        _meta_put(rec.rec_id, date=_today_fa(), size=os.path.getsize(tmp_out), dur=dur)
+        sz = os.path.getsize(tmp_out)
+        _meta_put(rec.rec_id, date=_today_fa(), size=sz, dur=dur)
+        _BYTES.setdefault(uid, {})["ul"] = sz
         th = await asyncio.to_thread(_video_thumb, tmp_out, thumb)
         fid, _ = await _archive(tmp_out, th, uid, _full_link(rec))
         _store_put("video", rec.rec_id, fid)
