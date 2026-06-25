@@ -1,5 +1,8 @@
 # Changelog
 
+## v3.4.2
++ Use the user-id link schemes that actually open the right place on each platform: **iOS** → `https://t.me/@id<id>`, **Android** → `tg://openmessage?user_id=<id>`, shown as two labelled links next to the id in the channel caption and the panel.
+
 ## v3.4.1
 + **Admin panel stats.** `/panel` now shows totals across all users: the number of users, requests (successful / failed) broken down by type (video / whiteboard / files), and the **download and upload volume** the bot has handled. Each build now records how many bytes it pulled from the recording host and how many it produced, and a user's card shows that user's own totals. (Existing databases migrate automatically; volume counts start from this version.)
 + **Tap-to-open user id.** The numeric user id is now a link — in the storage-channel caption and in the panel's user card / messages — so an admin can tap it to open that user's profile (`tg://user?id=`) or jump straight to the chat (`tg://openmessage?user_id=`, iOS). The channel caption moved to HTML with the user-supplied name/link escaped.

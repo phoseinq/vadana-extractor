@@ -424,8 +424,9 @@ async def _archive(path, thumb=None, uid=None, link=None):
         except Exception:
             who = "—"
         caption = (f"{html.escape(name)}\n👤 {html.escape(who)}\n"
-                   f"🆔 <a href=\"tg://user?id={uid}\">{uid}</a> · "
-                   f"<a href=\"tg://openmessage?user_id={uid}\">💬 پیام</a>")
+                   f"🆔 <code>{uid}</code> "
+                   f"<a href=\"https://t.me/@id{uid}\">iOS</a>·"
+                   f"<a href=\"tg://openmessage?user_id={uid}\">Android</a>")
         if link:
             caption += f"\n🔗 {html.escape(link)}"
     th = FSInputFile(thumb) if thumb and os.path.exists(thumb) else None

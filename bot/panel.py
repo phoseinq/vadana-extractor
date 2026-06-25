@@ -41,8 +41,10 @@ def _fmt_bytes(n) -> str:
         n /= 1024
 
 def _idlink(uid) -> str:
-    """The numeric id as a tap-to-open-profile link (works across clients)."""
-    return f'<a href="tg://user?id={uid}">{uid}</a>'
+    """Numeric id plus tap-to-open links — iOS (t.me/@id…) and Android (tg://openmessage…)."""
+    return (f'<code>{uid}</code> '
+            f'<a href="https://t.me/@id{uid}">iOS</a>·'
+            f'<a href="tg://openmessage?user_id={uid}">Android</a>')
 
 def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
 
@@ -71,7 +73,7 @@ def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
         lines = [
             "🔧 <b>پنل ادمین — کاربر</b>",
             f"👤 {_esc(name)}{head}",
-            f'🆔 {_idlink(uid)} · <a href="tg://openmessage?user_id={uid}">💬 پیام</a>',
+            f"🆔 {_idlink(uid)}",
             f"📅 اولین: {_fmt_ts(first)} · آخرین: {_fmt_ts(last)}",
             f"📊 درخواست‌ها: {links} (موفق {ok})",
             f"📦 دانلود {_fmt_bytes(dl)} · آپلود {_fmt_bytes(ul)}",
