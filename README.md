@@ -56,9 +56,9 @@ It comes as a **Telegram bot** ([@iau_archive_Bot](https://t.me/iau_archive_Bot)
 - A bot token from [@BotFather](https://t.me/BotFather) (bot mode only)
 - No proxy on a personal / Iran machine — only a reverse proxy when hosting abroad
 
-### CLI (Windows or any computer)
+### Quick start — interactive CLI (Windows / macOS / Linux)
 
-Install [Python 3.11–3.13](https://www.python.org/downloads/) (tick **Add to PATH**) and, for video, **ffmpeg** (`winget install ffmpeg`). Then:
+Install [Python 3.11–3.13](https://www.python.org/downloads/) (tick **Add to PATH**) and, for video/audio, **ffmpeg** (`winget install ffmpeg`). Then:
 
 ```bash
 git clone https://github.com/phoseinq/vadana-extractor
@@ -66,11 +66,22 @@ cd vadana-extractor
 pip install -r requirements.txt
 ```
 
+Run it with **one command** — on **Windows** just double-click **`vadana.bat`** (or run it from a terminal); on any OS:
+
+```bash
+python cli/vadana.py
+```
+
+It's fully guided: paste the recording link, it tells you what the recording actually contains (whiteboard / slides / audio), then you pick from a menu — **slides PDF**, **whiteboard PDF**, **synced video**, or **audio only (m4a or mp3)**. It loops, so you can grab several outputs — or several recordings — without re-running. Everything lands in `out/`.
+
+<details><summary>Prefer one-shot commands?</summary>
+
 ```bash
 python cli/download_slides.py "https://<connect-host>/<id>/"   # shared files
-python cli/make_video.py "<url>"                               # synced video
+python cli/make_video.py "<url>"                               # synced video (audio-only -> .m4a)
 python cli/make_video.py "<url>" --pages-only                  # board pages as a PDF
 ```
+</details>
 
 The plain link is usually enough. If a recording asks you to log in, copy the full link including its `session=` value (it expires fast).
 

@@ -544,6 +544,43 @@ async def choose_mode(cb: CallbackQuery):
     await _show(cb, msg, BACK_KB)
     await cb.answer()
 
+@dp.callback_query(F.data.startswith("aud:"))
+async def send_audio_format(cb: CallbackQuery):
+    uid = cb.from_user.id
+    _, fmt, rec_id = cb.data.split(":", 2)
+    src = os.path.join(config.CACHE_DIR, f"{rec_id}.m4a")
+    if not os.path.exists(src):
+        await cb.answer("فایلِ صوتی منقضی شد؛ لطفاً دوباره لینک را بفرستید.", show_alert=True)
+        return
+    await cb.answer("در حال آماده‌سازی…")
+    try:
+        await cb.message.edit_text(f"📤 در حال ارسالِ صدا ({fmt.upper()})…")
+    except Exception:
+        pass
+    out = src
+    if fmt == "mp3":
+        out = os.path.join(config.CACHE_DIR, f"{rec_id}.mp3")
+        if not os.path.exists(out):
+            await asyncio.to_thread(subprocess.run,
+                ["ffmpeg", "-y", "-loglevel", "error", "-i", src, "-c:a", "libmp3lame", "-q:a", "3", out],
+                check=True)
+    _BYTES.setdefault(uid, {})["ul"] = os.path.getsize(out)
+    ok = False
+    try:
+        await cb.message.answer_document(FSInputFile(out, filename=f"{rec_id}.{fmt}"),
+                                         caption=_caption("🎧 صدای کلاس", rec_id),
+                                         reply_markup=_report_kb(rec_id))
+        ok = True
+    except Exception:
+        logging.error("audio send failed:\n%s", traceback.format_exc())
+    try:
+        await cb.message.edit_text(f"✅ فایلِ صوتی ({fmt.upper()}) ارسال شد. (/start)" if ok
+                                   else "❌ ارسالِ فایلِ صوتی ناموفق بود؛ دوباره تلاش کنید.")
+    except Exception:
+        pass
+    if ok:
+        _stat(uid, "videos")
+
 @dp.callback_query(F.data.startswith("report:"))
 async def report_start(cb: CallbackQuery):
     uid = cb.from_user.id
@@ -889,16 +926,17 @@ async def do_video(m, rec, uid):
                                                      lambda s, p: prog.set(STAGE_MEDIA.get(s, s), 52 + p * 0.45))
         stop.set(); await poller
         if result is None:
-            await status.edit_text("ℹ️ این کلاس محتوای تصویری نداشت (وایت‌برد/اسلاید/اشتراکِ صفحه)؛ فقط صدای کلاس را می‌فرستم…")
-            audio_out = os.path.join(work, f"{rec.rec_id}.m4a")
-            audio_out = await asyncio.to_thread(audio_mod.extract_audio, zf, work, audio_out)
-            if audio_out and os.path.exists(audio_out):
-                _BYTES.setdefault(uid, {})["ul"] = os.path.getsize(audio_out)
-                await m.reply_document(FSInputFile(audio_out, filename=f"{rec.rec_id}.m4a"),
-                                       caption=_caption("🎧 صدای کلاس", rec.rec_id),
-                                       reply_markup=_report_kb(rec.rec_id))
-                _stat(uid, "videos")
-                await status.edit_text("✅ این کلاس فقط صدا داشت؛ فایلِ صوتی ارسال شد. (/start)")
+            # no visual content -> extract the lecture audio once (kept in the cache so
+            # it survives this job's cleanup) and let the user pick the format to send.
+            os.makedirs(config.CACHE_DIR, exist_ok=True)
+            cached = os.path.join(config.CACHE_DIR, f"{rec.rec_id}.m4a")
+            cached = await asyncio.to_thread(audio_mod.extract_audio, zf, work, cached)
+            if cached and os.path.exists(cached):
+                await status.edit_text(
+                    "ℹ️ این کلاس فقط صدا داشت (وایت‌برد/اسلاید/اشتراکِ صفحه ندارد).\nفرمتِ صوتی را انتخاب کنید:",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="🎧 M4A", callback_data=f"aud:m4a:{rec.rec_id}"),
+                        InlineKeyboardButton(text="🎵 MP3", callback_data=f"aud:mp3:{rec.rec_id}")]]))
             else:
                 await status.edit_text("ℹ️ این کلاس محتوایی برای ارسال نداشت. (/start)")
             return
