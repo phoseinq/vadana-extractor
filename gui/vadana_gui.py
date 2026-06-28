@@ -10,6 +10,7 @@ Run:  python gui/vadana_gui.py   (or double-click vadana-gui.bat)
 """
 import os
 import sys
+import time
 import queue
 import shutil
 import threading
@@ -28,7 +29,7 @@ from vadana.connect import parse_recording_url, ConnectClient, is_valid_recordin
 from vadana import whiteboard as wb_mod, audio as audio_mod, video as video_mod
 from vadana.slides import download_slides
 
-VERSION = "3.4.7"
+VERSION = "3.4.8"
 OUT_DIR = "out"
 LOG_FILE = os.path.join(OUT_DIR, "vadana.log")
 MAX_RETRIES = 3
@@ -37,6 +38,10 @@ CARD, BG, FIELD = "#171a21", "#0f1115", "#0b0d11"
 MUTED, TEXT = "#8b93a7", "#d7dce5"
 OK_DOT, BAD_DOT = "#34d399", "#f87171"
 RES = {"720p": (1280, 720), "1080p": (1920, 1080), "1440p": (2560, 1440), "4K": (3840, 2160)}
+STAGE_LABEL = {"audio": "extracting & mixing the lecture audio",
+               "render": "rendering the board / slide frames",
+               "encode": "encoding the video",
+               "done": "finishing up"}
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -208,7 +213,7 @@ class App(ctk.CTk):
             ctk.CTkOptionMenu(row, values=list(RES), variable=self._vid_res, width=110,
                               **mk()).grid(row=0, column=1, padx=(0, 26))
             ctk.CTkLabel(row, text="Frame rate", text_color=MUTED).grid(row=0, column=2, padx=(0, 8))
-            ctk.CTkOptionMenu(row, values=["2", "4"], variable=self._vid_fps, width=80,
+            ctk.CTkOptionMenu(row, values=["2", "4", "8", "15", "30"], variable=self._vid_fps, width=80,
                               **mk()).grid(row=0, column=3)
         elif t == "Audio":
             ctk.CTkLabel(row, text="Format", text_color=MUTED).grid(row=0, column=0, padx=(0, 10), pady=14)
@@ -236,8 +241,13 @@ class App(ctk.CTk):
         menu.add_separator()
         menu.add_command(label="Select all", command=lambda: entry.select_range(0, "end"))
         menu.add_command(label="Clear", command=lambda: entry.delete(0, "end"))
-        for seq in ("<Control-v>", "<Control-V>", "<Button-2>"):
-            entry.bind(seq, paste)
+        def on_ctrl(e):
+            # match V by its physical keycode (86 on Windows, 55 on X11) so Ctrl+V
+            # works on any keyboard layout — a Persian layout sends a different keysym
+            if e.keycode in (86, 55) or (getattr(e, "keysym", "") or "").lower() == "v":
+                return paste()
+        entry.bind("<Control-KeyPress>", on_ctrl)
+        entry.bind("<Button-2>", paste)
         entry.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
 
     def _paste_url(self):
@@ -426,13 +436,30 @@ class App(ctk.CTk):
                 self._say("[!] ffmpeg not found — use ‘Check & install’ above."); return
             w, h = RES[self._vid_res.get()]
             out = os.path.join(OUT_DIR, f"{rid}.mp4")
-            self._say(f"[*] building {self._vid_res.get()} @ {self._vid_fps.get()}fps … (a few minutes)")
-            res = video_mod.make_full_video(
-                self.zf, work, out, 2, float(self._vid_fps.get()),
-                progress=lambda s, p: self._prog(p / 100.0, f"{s}  {p:.0f}%"),
-                pdf_paths=self.pdfs or None, out_w=w, out_h=h)
-            self._say(f"[+] -> {out}" if res
-                      else "[!] no whiteboard/screen-share/slides — try Audio for the lecture audio.")
+            try:
+                enc = video_mod._encoder()
+            except Exception:
+                enc = "libx264"
+            self._say(f"[*] building video  ·  {self._vid_res.get()} ({w}x{h}) @ {self._vid_fps.get()} fps")
+            self._say(f"    encoder : {enc}  ({'GPU-accelerated' if enc != 'libx264' else 'CPU (libx264)'})")
+            self._say(f"    workers : {video_mod.RENDER_WORKERS} parallel render process(es)")
+            t0 = time.time()
+            last = [None]
+
+            def vprog(s, p):
+                label = STAGE_LABEL.get(s, s)
+                if s != last[0]:
+                    last[0] = s
+                    self._say(f"    ▸ {label} …")
+                self._prog(p / 100.0, f"{label}  {p:.0f}%")
+
+            res = video_mod.make_full_video(self.zf, work, out, 2, float(self._vid_fps.get()),
+                                            progress=vprog, pdf_paths=self.pdfs or None, out_w=w, out_h=h)
+            if res:
+                mb = os.path.getsize(out) / 1e6
+                self._say(f"[+] done in {time.time() - t0:.0f}s  ·  {mb:.1f} MB  ->  {out}")
+            else:
+                self._say("[!] no whiteboard/screen-share/slides — try Audio for the lecture audio.")
         elif t == "Audio":
             if not audio_mod.ffmpeg_available():
                 self._say("[!] ffmpeg not found — use ‘Check & install’ above."); return
