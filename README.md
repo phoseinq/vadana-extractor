@@ -85,6 +85,17 @@ python cli/make_video.py "<url>" --pages-only                  # board pages as 
 
 The plain link is usually enough. If a recording asks you to log in, copy the full link including its `session=` value (it expires fast).
 
+### Desktop app (dark GUI)
+
+Prefer a window over a terminal? On **Windows**, double-click **`vadana-gui.bat`** (it installs the one GUI dependency the first time and opens the app); on any OS:
+
+```bash
+pip install -r requirements-gui.txt
+python gui/vadana_gui.py
+```
+
+Paste the link, hit **Analyze**, and it shows what the recording holds; then pick **Slides PDF / Whiteboard PDF / Video / Audio**, choose the video **resolution** (1080p / 1440p / 4K) and **frame rate** or the audio **format** (m4a / mp3), and **Extract**. Dark theme, line icons, live progress and log.
+
 ### Bot setup
 
 One command on the server. It asks Docker or native, installs everything (ffmpeg, the dependencies, the systemd service, the `vadana` command), then prints the next step.

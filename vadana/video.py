@@ -394,7 +394,7 @@ def _meta_seconds(zf, xml_name) -> float:
     return float(m.group(1)) if m else 0.0
 
 def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0, progress=None,
-                    pdf_paths=None):
+                    pdf_paths=None, out_w: int = 2560, out_h: int = 1440):
     """Mixed recording -> one 16:9 MP4 on the master timeline: the whiteboard
     (full length, rendered big then fitted so the handwriting is anti-aliased and
     legible) with the shared screen shown full-frame during its periods, and audio
@@ -420,7 +420,7 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
 
     master_s = max(_meta_seconds(zf, "mainstream.xml"), _meta_seconds(zf, "ftcontent1.xml"),
                    wb.duration_ms / 1000.0)
-    OUT_W, OUT_H = 2560, 1440
+    OUT_W, OUT_H = out_w, out_h
     RENDER_SCALE = 4
 
     rep("audio", 10)
