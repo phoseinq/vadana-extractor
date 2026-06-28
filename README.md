@@ -34,7 +34,7 @@ Pulls study material out of any Adobe Connect recording — straight from the re
 
 It comes as a **Telegram bot** ([@iau_archive_Bot](https://t.me/iau_archive_Bot)) and two **CLI tools**.
 
-- 📄 **Shared files** — the original PDF / Word / PPT from the Share pod, even when the download button was off.
+- 📄 **Shared files** — the original PDF slides from the Share pod, even when the download button was off.
 - 📝 **Whiteboard → PDF** — every board page as a clean PDF, strokes smoothed. If the professor drew on a shared PDF, that page stays behind the annotations.
 - 🎬 **Synced video** — whiteboard + screen-share + audio on one timeline.
 - 🖼️ **Preview + details** — each file arrives with a thumbnail and a short caption (id, date, size, length).
@@ -176,7 +176,7 @@ pytest
 
 هم رباتِ تلگرام است ([@iau_archive_Bot](https://t.me/iau_archive_Bot))، هم دو ابزارِ خط‌فرمان.
 
-- 📄 **فایل‌های اشتراکی** — همان PDF/Word/PPTِ اصل از Share pod، حتی وقتی دکمهٔ دانلود بسته بوده.
+- 📄 **فایل‌های اشتراکی** — همان PDFِ اصلِ اسلاید از Share pod، حتی وقتی دکمهٔ دانلود بسته بوده.
 - 📝 **وایت‌برد ← PDF** — هر صفحهٔ تخته به‌صورتِ PDFِ تمیز، با خط‌های صاف‌شده. اگر استاد روی یک PDFِ اشتراکی نوشته باشد، همان صفحه پشتِ نوشته‌ها می‌ماند.
 - 🎬 **ویدیوی همگام** — وایت‌برد + اشتراکِ صفحه + صدا روی یک تایم‌لاین.
 - 🖼️ **پیش‌نمایش و جزئیات** — هر فایل با تامبنیل و یک کپشنِ کوتاه می‌رسد (شناسه، تاریخ، حجم، مدت).
