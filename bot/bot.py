@@ -93,19 +93,11 @@ WELCOME = (
     "🎬 ویدیوی آرشیو — وایت‌برد/اسلاید همراه با صدا"
 )
 MENU = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="📂 دانلود فایل‌ها", callback_data="mode:files", style="success")],
+    [InlineKeyboardButton(text="📄 دانلود اسلایدهای PDF", callback_data="mode:files", style="success")],
     [InlineKeyboardButton(text="📝 دانلود وایت‌برد (PDF)", callback_data="mode:wb", style="success")],
     [InlineKeyboardButton(text="🎬 ساخت ویدیوی آرشیو", callback_data="mode:video", style="primary")],
     [InlineKeyboardButton(text="👤 پروفایل", callback_data="menu:profile"),
      InlineKeyboardButton(text="💬 پشتیبانی", callback_data="menu:support")],
-])
-FILES_MENU = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="📄 اسناد (PDF/Word/PPT)", callback_data="ft:doc", style="success")],
-    [InlineKeyboardButton(text="🎵 صدا", callback_data="ft:audio", style="success"),
-     InlineKeyboardButton(text="🎞 ویدیو", callback_data="ft:video", style="success")],
-    [InlineKeyboardButton(text="🖼 تصاویر", callback_data="ft:image", style="success"),
-     InlineKeyboardButton(text="📦 همهٔ فایل‌ها", callback_data="ft:all", style="primary")],
-    [InlineKeyboardButton(text="⬅️ بازگشت", callback_data="menu:main")],
 ])
 CANCEL_KB = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="لغو", callback_data="job_cancel", style="danger")]])
@@ -529,20 +521,12 @@ async def back_main(cb: CallbackQuery):
     await _show(cb, "منوی اصلی — لطفاً یک گزینه را انتخاب کنید:", MENU)
     await cb.answer()
 
-@dp.callback_query(F.data.startswith("ft:"))
-async def choose_filetype(cb: CallbackQuery):
-    uid, ft = cb.from_user.id, cb.data.split(":", 1)[1]
-    USER_MODE[uid] = "files"
-    USER_FILETYPE[uid] = ft
-    label = "همهٔ فایل‌ها" if ft == "all" else FT_LABEL.get(ft, "فایل")
-    await _show(cb, f"📂 *دانلودِ {label}* انتخاب شد. لطفاً لینکِ ضبط را ارسال کنید.", BACK_KB)
-    await cb.answer()
-
 @dp.callback_query(F.data.startswith("mode:"))
 async def choose_mode(cb: CallbackQuery):
     uid, mode = cb.from_user.id, cb.data.split(":", 1)[1]
     if mode == "files":
-        await _show(cb, "📂 *دانلودِ فایل‌ها*\nلطفاً نوعِ فایلِ موردنظر را انتخاب کنید:", FILES_MENU)
+        USER_MODE[uid] = "files"
+        await _show(cb, "📄 *دانلودِ اسلایدهای PDF* انتخاب شد. لطفاً لینکِ ضبط را ارسال کنید.", BACK_KB)
         await cb.answer()
         return
     if mode == "video" and not (config.ALLOW_VIDEO or uid in config.ADMINS):
@@ -692,11 +676,13 @@ async def do_files(m, rec, ftype, uid):
                                              lambda g, t: (_track_dl(uid, t), prog.set(L_FETCH, (g / t * 70) if t else 35)))
                 prog.set(L_PREP, 75)
                 saved = await asyncio.to_thread(download_slides, client, rec.rec_id, tmp, zf,
-                                                lambda i, t: prog.set(L_PREP, 75 + i / t * 20))
+                                                lambda i, t: prog.set(L_PREP, 75 + i / t * 20), {".pdf"})
             stop.set(); await poller
             if not saved:
-                await status.edit_text("ℹ️ این جلسه هیچ فایلِ اشتراکی‌ای نداشت.\n"
-                                       "اگر استاد روی وایت‌برد نوشته است، «📝 دانلود وایت‌برد» را انتخاب کنید. (/start)")
+                await status.edit_text(
+                    "ℹ️ این جلسه هیچ اسلایدِ PDFی نداشت.\n"
+                    "اگر استاد روی وایت‌برد نوشته است، «📝 دانلود وایت‌برد» را انتخاب کنید.\n"
+                    "(پاورپوینتِ ارائه‌شده از سمتِ وادانا قابلِ دانلود نیست.) (/start)")
                 return
             _BYTES.setdefault(uid, {})["ul"] = sum(os.path.getsize(p) for p in saved)
             manifest = []
@@ -894,10 +880,28 @@ async def do_video(m, rec, uid):
                 result = await asyncio.to_thread(video_mod.make_full_video, zf, work, tmp_out, 2, 4.0,
                                                  lambda s, p: prog.set(STAGE.get(s, s), 32 + p * 0.6),
                                                  pdfs or None)
-                if result is None:
-                    result = await asyncio.to_thread(video_mod.make_media_video, zf, work, tmp_out, pdfs or None, 2,
+                # whiteboard / screen-share / PDF-nav-with-PDF -> real video; shared
+                # PDFs -> slideshow. No whiteboard / screen-share / renderable PDF
+                # means nothing to render (a PPT-only presentation, or an audio-only
+                # session): deliver the lecture audio as m4a instead of a blank video.
+                if result is None and pdfs:
+                    result = await asyncio.to_thread(video_mod.make_media_video, zf, work, tmp_out, pdfs, 2,
                                                      lambda s, p: prog.set(STAGE_MEDIA.get(s, s), 52 + p * 0.45))
         stop.set(); await poller
+        if result is None:
+            await status.edit_text("ℹ️ این کلاس محتوای تصویری نداشت (وایت‌برد/اسلاید/اشتراکِ صفحه)؛ فقط صدای کلاس را می‌فرستم…")
+            audio_out = os.path.join(work, f"{rec.rec_id}.m4a")
+            audio_out = await asyncio.to_thread(audio_mod.extract_audio, zf, work, audio_out)
+            if audio_out and os.path.exists(audio_out):
+                _BYTES.setdefault(uid, {})["ul"] = os.path.getsize(audio_out)
+                await m.reply_document(FSInputFile(audio_out, filename=f"{rec.rec_id}.m4a"),
+                                       caption=_caption("🎧 صدای کلاس", rec.rec_id),
+                                       reply_markup=_report_kb(rec.rec_id))
+                _stat(uid, "videos")
+                await status.edit_text("✅ این کلاس فقط صدا داشت؛ فایلِ صوتی ارسال شد. (/start)")
+            else:
+                await status.edit_text("ℹ️ این کلاس محتوایی برای ارسال نداشت. (/start)")
+            return
         if not os.path.exists(tmp_out):
             return
         await status.edit_text("📤 در حال ذخیره و ارسال…")

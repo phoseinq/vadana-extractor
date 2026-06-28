@@ -77,7 +77,14 @@ def main():
                                     pdf_paths=pdfs)
     print()
     if not res:
-        print("[!] nothing to build (no whiteboard and no screen-share).")
+        # audio-only session (no whiteboard / screen-share / slides) -> save the audio
+        print("[*] no whiteboard / screen-share / slides — saving the lecture audio instead ...")
+        audio_out = os.path.splitext(out)[0] + ".m4a"
+        saved = audio_mod.extract_audio(zf, work, audio_out)
+        if saved and os.path.exists(saved):
+            print(f"[+] audio-only session -> {saved}")
+        else:
+            print("[!] this recording has no audio either; nothing to save.")
         return
     print(f"[+] DONE -> {out}")
 

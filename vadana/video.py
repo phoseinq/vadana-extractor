@@ -375,6 +375,10 @@ def make_media_video(zf, work_dir, out_path, pdf_paths=None, scale: int = 2, pro
 
     per = max(2.0, dur / len(pages)) if dur else 4.0
     frames = [(i * per, p) for i, p in enumerate(pages)]
+    # hold the last page to the audio end, else mux's -shortest truncates the whole
+    # video to the final frame's ~3s tail and throws away the rest of the lecture audio
+    if dur and frames[-1][0] < dur:
+        frames.append((dur, pages[-1]))
     rep("encode", 82)
     mux(frames, audio_path, out_path, work_dir, audio_skip_seconds=0.0,
         progress=lambda fr: rep("encode", 82 + fr * 16), out_fps=2)
@@ -411,7 +415,7 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
     shares = [s for s in streams if s["type"] == "screenshare"]
     wb = wb_mod.load_from_package(zf)
     pdf_nav = wb_mod.load_pdf_content(zf)
-    if not wb.pages and not shares and not pdf_nav:
+    if not wb.pages and not shares and not (pdf_nav and pdf_paths):
         return None
 
     master_s = max(_meta_seconds(zf, "mainstream.xml"), _meta_seconds(zf, "ftcontent1.xml"),
@@ -425,7 +429,18 @@ def make_full_video(zf, work_dir, out_path, scale: int = 2, max_fps: float = 4.0
     rep("render", 22)
     wb_frames = []
     if wb.pages:
-        backgrounds = wb_mod.pdf_backgrounds(pdf_paths, wb.pages)
+        # the whiteboard's own page-flip list is sparse (only moments the prof drew);
+        # the shared document's currentPage timeline is far richer and starts earlier.
+        # Drive the on-screen page from it so every page the prof showed appears (no
+        # blank start, no stuck page), with the strokes drawn on the right page.
+        if pdf_nav and pdf_paths:
+            fidx = wb.pages[0][0] if isinstance(wb.pages[0], tuple) else 0
+            nav = [(t, (fidx, p)) for t, p in pdf_nav]
+            if nav and nav[0][0] > 0:
+                nav.insert(0, (0, nav[0][1]))   # doc is on screen from the start; show its first page from t=0
+            wb.nav = nav
+        view_keys = sorted(set(wb.pages) | {pk for _, pk in wb.nav})
+        backgrounds = wb_mod.pdf_backgrounds(pdf_paths, view_keys)
         content_aspect = None
         if backgrounds:
             b0 = next(iter(backgrounds.values()))

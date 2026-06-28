@@ -15,6 +15,7 @@ from bot import config
 
 _PENDING_MSG: dict[int, int] = {}
 _PENDING_REPLY: dict[int, int] = {}
+_LAST_SENT: dict[int, int] = {}   # recipient uid -> message_id of the bot's last panel message (for two-way delete)
 
 def _esc(s) -> str:
     return _html.escape(str(s if s is not None else ""))
@@ -88,13 +89,16 @@ def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
                 if r["token"]:
                     link += f"?session={r['token']}"
                 lines.append(f"{'✅' if r['ok'] else '❌'} <code>{_esc(link)}</code>")
-        kb = InlineKeyboardMarkup(inline_keyboard=[
-            [_btn("✉️ پیام به کاربر", f"pmsg:{uid}", "primary")],
+        rows = [[_btn("✉️ پیام به کاربر", f"pmsg:{uid}", "primary")]]
+        if _LAST_SENT.get(uid):
+            rows.append([_btn("🗑 حذف آخرین پیامِ ربات", f"pdel:{uid}", "danger")])
+        rows += [
             [_btn(("✅ آنبن" if banned else "🚫 بن"), f"pban:{uid}", "danger"),
              _btn("♻️ ریست سهمیه", f"prl:{uid}", "success")],
             [InlineKeyboardButton(text="🔍 جستجوی کاربرِ دیگر", switch_inline_query_current_chat="")],
             [_btn("✖️ بستن", "pclose")],
-        ])
+        ]
+        kb = InlineKeyboardMarkup(inline_keyboard=rows)
         return "\n".join(lines), kb
 
     async def _edit(cb: CallbackQuery, text, kb):
@@ -220,12 +224,31 @@ def setup(dp, bot, db, store, save, video_used_today, video_inc) -> None:
         reply_kb = InlineKeyboardMarkup(inline_keyboard=[
             [_btn("💬 پاسخ", f"ureply:{aid}", "primary")]])
         try:
-            await bot.send_message(uid, body, parse_mode="HTML", reply_markup=reply_kb)
-            note = "✅ پیام ارسال شد."
+            sent = await bot.send_message(uid, body, parse_mode="HTML", reply_markup=reply_kb)
+            _LAST_SENT[uid] = sent.message_id
+            note = "✅ پیام ارسال شد. (برای حذفِ دوطرفه، دکمهٔ «🗑 حذف آخرین پیامِ ربات» را بزنید.)"
         except Exception as e:
             note = f"❌ ارسال نشد ({type(e).__name__}) — احتمالاً کاربر ربات را بلاک کرده."
         text, kb = _card(uid)
         await m.answer(note + "\n\n" + text, parse_mode="HTML", reply_markup=kb)
+
+    @dp.callback_query(F.data.startswith("pdel:"))
+    async def cb_del_msg(cb: CallbackQuery):
+        if not _is_admin(cb.from_user.id):
+            return await cb.answer()
+        uid = int(cb.data.split(":")[1])
+        mid = _LAST_SENT.get(uid)
+        if not mid:
+            return await cb.answer("پیامی برای حذف ثبت نشده.", show_alert=True)
+        try:
+            await bot.delete_message(uid, mid)            # private chat -> revokes for both sides
+            _LAST_SENT.pop(uid, None)
+            note = "✅ پیامِ ربات دوطرفه حذف شد."
+        except Exception as e:
+            note = f"❌ حذف نشد ({type(e).__name__}) — شاید بیش از ۴۸ ساعت گذشته یا قبلاً حذف شده."
+        text, kb = _card(uid)
+        await _edit(cb, note + "\n\n" + text, kb)
+        await cb.answer()
 
     @dp.callback_query(F.data.startswith("ureply:"))
     async def cb_user_reply(cb: CallbackQuery):

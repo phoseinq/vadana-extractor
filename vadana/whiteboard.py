@@ -237,18 +237,22 @@ def pdf_backgrounds(pdf_paths, page_keys) -> dict:
         import fitz
     except ImportError:
         return {}
+    def _render(doc, i):
+        pix = doc[i].get_pixmap(matrix=fitz.Matrix(2, 2))
+        return Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+
+    nums = [k[1] if isinstance(k, tuple) else k for k in page_keys]
     for p in pdf_paths:
         try:
             doc = fitz.open(p)
         except Exception:
             continue
         try:
-            if doc.page_count == len(page_keys):
-                out = {}
-                for i, key in enumerate(page_keys):
-                    pix = doc[i].get_pixmap(matrix=fitz.Matrix(2, 2))
-                    out[key] = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
-                return out
+            n = doc.page_count
+            if all(0 <= num < n for num in nums):          # board page number == PDF page
+                return {key: _render(doc, num) for key, num in zip(page_keys, nums)}
+            if n == len(page_keys):                          # whole-doc 1:1 by order
+                return {key: _render(doc, i) for i, key in enumerate(page_keys)}
         finally:
             doc.close()
     return {}
