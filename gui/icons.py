@@ -56,6 +56,13 @@ def icon(name: str, size: int = 20, color=MUTED) -> Image.Image:
         d.line([cx + s * 0.13, s * 0.45, cx, s * 0.62], fill=color, width=w)
         d.line([m, s - m, s - m, s - m], fill=color, width=w)
 
+    elif name == "info":                                # "i" in a circle
+        d.ellipse([m, m, s - m, s - m], outline=color, width=w)
+        cx = s * 0.5
+        r = w * 0.7
+        d.ellipse([cx - r, s * 0.32 - r, cx + r, s * 0.32 + r], fill=color)
+        d.line([cx, s * 0.44, cx, s * 0.70], fill=color, width=w)
+
     return im.resize((size, size), Image.LANCZOS)
 
 

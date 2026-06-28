@@ -2,17 +2,21 @@
 """
 Vadana Extractor — desktop GUI (dark).
 
-A small, focused window: paste a recording link, hit Analyze, then pull the
-slides PDF, the whiteboard PDF, the synced video (with a quality setting), or
-just the audio (m4a / mp3). The same things the Telegram bot does, on your
-desktop. Run:  python gui/vadana_gui.py   (or double-click vadana-gui.bat)
+Paste a recording link, Analyze, then pull the slides PDF, the whiteboard PDF,
+the synced video (with a resolution / frame-rate setting), or just the audio
+(m4a / mp3). Same things the Telegram bot does, on your desktop.
+
+Run:  python gui/vadana_gui.py   (or double-click vadana-gui.bat)
 """
 import os
 import sys
 import queue
+import shutil
 import threading
 import traceback
 import subprocess
+import datetime
+import tkinter
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))   # repo root (for vadana.*)
@@ -24,9 +28,14 @@ from vadana.connect import parse_recording_url, ConnectClient, is_valid_recordin
 from vadana import whiteboard as wb_mod, audio as audio_mod, video as video_mod
 from vadana.slides import download_slides
 
+VERSION = "3.4.6"
 OUT_DIR = "out"
-ACCENT = "#2dd4bf"          # teal
-ACCENT_HOVER = "#14b8a6"
+LOG_FILE = os.path.join(OUT_DIR, "vadana.log")
+MAX_RETRIES = 3
+ACCENT, ACCENT_HOVER = "#2dd4bf", "#14b8a6"
+CARD, BG, FIELD = "#171a21", "#0f1115", "#0b0d11"
+MUTED, TEXT = "#8b93a7", "#d7dce5"
+OK_DOT, BAD_DOT = "#34d399", "#f87171"
 RES = {"1080p": (1920, 1080), "1440p": (2560, 1440), "4K": (3840, 2160)}
 
 ctk.set_appearance_mode("dark")
@@ -37,71 +46,94 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Vadana Extractor")
-        self.geometry("860x680")
-        self.minsize(760, 620)
-        self.configure(fg_color="#0f1115")
+        self.geometry("900x780")
+        self.minsize(820, 720)
+        self.configure(fg_color=BG)
 
         self._q: queue.Queue = queue.Queue()
-        self.client = None
-        self.zf = None
-        self.rec = None
+        self.client = self.zf = self.rec = None
         self.pdfs = []
         self.busy = False
+        self._last_job = None
+        self._retries = 0
 
         self._build()
         self.after(80, self._drain)
+        self.refresh_prereqs()
 
     # ── layout ────────────────────────────────────────────────────────────────
     def _build(self):
-        pad = {"padx": 22, "pady": (0, 14)}
-        DARK = (6, 35, 31, 255)            # icon colour on the teal buttons
-        self.ic_board = ctk.CTkImage(icons.icon("board", 20), size=(20, 20))
-        self.ic_doc = ctk.CTkImage(icons.icon("doc", 20), size=(20, 20))
-        self.ic_audio = ctk.CTkImage(icons.icon("audio", 20, icons.ACCENT), size=(20, 20))
+        pad = {"padx": 22, "pady": (0, 12)}
+        DARK = (6, 35, 31, 255)
+        self.ic_board = ctk.CTkImage(icons.icon("board", 22), size=(22, 22))
+        self.ic_doc = ctk.CTkImage(icons.icon("doc", 22), size=(22, 22))
+        self.ic_audio = ctk.CTkImage(icons.icon("audio", 22, icons.ACCENT), size=(22, 22))
         self.ic_folder = ctk.CTkImage(icons.icon("folder", 18), size=(18, 18))
         self.ic_search = ctk.CTkImage(icons.icon("search", 18, DARK), size=(18, 18))
         self.ic_dl = ctk.CTkImage(icons.icon("download", 20, DARK), size=(20, 20))
+        self.ic_info = ctk.CTkImage(icons.icon("info", 20), size=(20, 20))
 
         head = ctk.CTkFrame(self, fg_color="transparent")
-        head.pack(fill="x", padx=22, pady=(20, 14))
-        ctk.CTkLabel(head, text="Vadana Extractor", font=ctk.CTkFont(size=26, weight="bold")).pack(anchor="w")
-        ctk.CTkLabel(head, text="Recover slides · whiteboard · video · audio from a Vadana recording",
-                     text_color="#8b93a7", font=ctk.CTkFont(size=13)).pack(anchor="w")
+        head.pack(fill="x", padx=22, pady=(18, 12))
+        ctk.CTkButton(head, text="", image=self.ic_info, width=40, height=40, command=self._about,
+                      fg_color=CARD, hover_color="#222632", corner_radius=20).pack(side="right", anchor="n")
+        ttl = ctk.CTkFrame(head, fg_color="transparent")
+        ttl.pack(side="left", anchor="w")
+        ctk.CTkLabel(ttl, text="Vadana Extractor", font=ctk.CTkFont(size=26, weight="bold")).pack(anchor="w")
+        ctk.CTkLabel(ttl, text="Recover slides · whiteboard · video · audio from a Vadana recording",
+                     text_color=MUTED, font=ctk.CTkFont(size=13)).pack(anchor="w")
+
+        # prerequisites strip
+        pr = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
+        pr.pack(fill="x", **pad)
+        inner = ctk.CTkFrame(pr, fg_color="transparent")
+        inner.pack(fill="x", padx=14, pady=10)
+        ctk.CTkLabel(inner, text="Prerequisites", text_color=MUTED,
+                     font=ctk.CTkFont(size=12, weight="bold")).pack(side="left")
+        self.dot_ff = self._dot(inner, "ffmpeg")
+        self.dot_pk = self._dot(inner, "packages")
+        self.fix_btn = ctk.CTkButton(inner, text="Check & install", width=140, height=30,
+                                     command=self.fix_prereqs, fg_color=FIELD, hover_color="#222632",
+                                     font=ctk.CTkFont(size=12))
+        self.fix_btn.pack(side="right")
 
         # URL row
-        url = ctk.CTkFrame(self, fg_color="#171a21", corner_radius=14)
+        url = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
         url.pack(fill="x", **pad)
         url.grid_columnconfigure(0, weight=1)
         self.url_entry = ctk.CTkEntry(url, placeholder_text="Paste the recording URL (with ?session=…)",
-                                      height=44, font=ctk.CTkFont(size=13), border_width=0, fg_color="#0f1115")
+                                      height=44, font=ctk.CTkFont(size=13), border_width=0, fg_color=FIELD)
         self.url_entry.grid(row=0, column=0, sticky="ew", padx=(14, 8), pady=14)
         self.url_entry.bind("<Return>", lambda e: self.analyze())
+        self._enable_paste(self.url_entry)
         self.analyze_btn = ctk.CTkButton(url, text="Analyze", image=self.ic_search, compound="left",
-                                         width=120, height=44, command=self.analyze,
+                                         width=130, height=44, command=self.analyze,
                                          fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color="#06231f",
                                          font=ctk.CTkFont(size=14, weight="bold"))
         self.analyze_btn.grid(row=0, column=1, padx=(0, 14), pady=14)
 
-        # contents card — icon chips
-        card = ctk.CTkFrame(self, fg_color="#171a21", corner_radius=14, height=58)
+        # contents card
+        card = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
         card.pack(fill="x", **pad)
-        card.pack_propagate(False)
-        inner = ctk.CTkFrame(card, fg_color="transparent")
-        inner.pack(expand=True)
-        self.stat_wb = self._chip(inner, self.ic_board, "whiteboard", "—")
-        self.stat_pdf = self._chip(inner, self.ic_doc, "slides", "—")
-        self.stat_aud = self._chip(inner, self.ic_audio, "audio", "—")
+        ctk.CTkLabel(card, text="RECORDING CONTENTS", text_color="#5b6478",
+                     font=ctk.CTkFont(size=10, weight="bold")).pack(anchor="w", padx=18, pady=(12, 0))
+        row = ctk.CTkFrame(card, fg_color="transparent")
+        row.pack(fill="x", padx=10, pady=(4, 14))
+        for i in range(3):
+            row.grid_columnconfigure(i, weight=1)
+        self.stat_wb = self._stat(row, 0, self.ic_board, "Whiteboard pages")
+        self.stat_pdf = self._stat(row, 1, self.ic_doc, "Slides (PDF)")
+        self.stat_aud = self._stat(row, 2, self.ic_audio, "Lecture audio")
 
         # output type
         self.out_type = ctk.CTkSegmentedButton(
             self, values=["Slides PDF", "Whiteboard PDF", "Video", "Audio"],
             command=self._on_type, height=40, font=ctk.CTkFont(size=13),
-            selected_color=ACCENT, selected_hover_color=ACCENT_HOVER, unselected_color="#171a21")
+            selected_color=ACCENT, selected_hover_color=ACCENT_HOVER, unselected_color=CARD)
         self.out_type.set("Video")
         self.out_type.pack(fill="x", **pad)
 
-        # settings (swaps with the chosen type)
-        self.settings = ctk.CTkFrame(self, fg_color="#171a21", corner_radius=14, height=70)
+        self.settings = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14, height=70)
         self.settings.pack(fill="x", **pad)
         self.settings.pack_propagate(False)
         self._vid_res = ctk.StringVar(value="1440p")
@@ -109,30 +141,56 @@ class App(ctk.CTk):
         self._aud_fmt = ctk.StringVar(value="m4a")
         self._build_settings()
 
-        # extract
-        self.extract_btn = ctk.CTkButton(self, text="Extract", image=self.ic_dl, compound="left",
-                                         height=48, command=self.extract,
-                                         state="disabled", fg_color="#22302e", hover_color=ACCENT_HOVER,
-                                         text_color="#06231f", text_color_disabled="#5b6f6a",
+        # actions
+        act = ctk.CTkFrame(self, fg_color="transparent")
+        act.pack(fill="x", padx=22, pady=(2, 10))
+        act.grid_columnconfigure(0, weight=1)
+        self.extract_btn = ctk.CTkButton(act, text="Extract", image=self.ic_dl, compound="left",
+                                         height=48, command=self.extract, state="disabled",
+                                         fg_color="#22302e", hover_color=ACCENT_HOVER, text_color="#06231f",
+                                         text_color_disabled="#5b6f6a",
                                          font=ctk.CTkFont(size=16, weight="bold"), corner_radius=12)
-        self.extract_btn.pack(fill="x", padx=22, pady=(2, 12))
+        self.extract_btn.grid(row=0, column=0, sticky="ew")
+        self.retry_btn = ctk.CTkButton(act, text="Retry", width=110, height=48, command=self.retry,
+                                       fg_color="#3a2730", hover_color="#5b3a48", text_color="#f9c0cf",
+                                       font=ctk.CTkFont(size=14, weight="bold"), corner_radius=12)
 
-        self.bar = ctk.CTkProgressBar(self, height=8, progress_color=ACCENT, fg_color="#171a21")
+        self.bar = ctk.CTkProgressBar(self, height=8, progress_color=ACCENT, fg_color=CARD)
         self.bar.set(0)
         self.bar.pack(fill="x", padx=22, pady=(0, 8))
 
-        self.log = ctk.CTkTextbox(self, fg_color="#0b0d11", text_color="#9aa4b2", corner_radius=12,
+        self.log = ctk.CTkTextbox(self, fg_color=FIELD, text_color="#9aa4b2", corner_radius=12,
                                   font=ctk.CTkFont(family="Consolas", size=12))
         self.log.pack(fill="both", expand=True, padx=22, pady=(0, 8))
         self.log.configure(state="disabled")
 
         foot = ctk.CTkFrame(self, fg_color="transparent")
-        foot.pack(fill="x", padx=22, pady=(0, 16))
-        self.status = ctk.CTkLabel(foot, text="ready", text_color="#8b93a7", font=ctk.CTkFont(size=12))
-        self.status.pack(side="left")
+        foot.pack(fill="x", padx=22, pady=(0, 14))
+        self.out_lbl = ctk.CTkLabel(foot, text=f"Output → {os.path.abspath(OUT_DIR)}",
+                                    text_color=MUTED, font=ctk.CTkFont(size=12))
+        self.out_lbl.pack(side="left")
         ctk.CTkButton(foot, text="Open output folder", image=self.ic_folder, compound="left",
-                      width=190, height=32, command=self._open_out,
-                      fg_color="#171a21", hover_color="#222632", font=ctk.CTkFont(size=12)).pack(side="right")
+                      width=185, height=32, command=self._open_out, fg_color=CARD,
+                      hover_color="#222632", font=ctk.CTkFont(size=12)).pack(side="right")
+
+    def _dot(self, parent, label):
+        f = ctk.CTkFrame(parent, fg_color="transparent")
+        f.pack(side="left", padx=(18, 0))
+        d = ctk.CTkLabel(f, text="●", text_color="#4b5563", font=ctk.CTkFont(size=14))
+        d.pack(side="left", padx=(0, 5))
+        ctk.CTkLabel(f, text=label, text_color=MUTED, font=ctk.CTkFont(size=12)).pack(side="left")
+        return d
+
+    def _stat(self, parent, col, image, label):
+        f = ctk.CTkFrame(parent, fg_color="transparent")
+        f.grid(row=0, column=col, sticky="n")
+        ctk.CTkLabel(f, text="", image=image).pack(side="left", padx=(0, 10))
+        box = ctk.CTkFrame(f, fg_color="transparent")
+        box.pack(side="left")
+        val = ctk.CTkLabel(box, text="—", text_color=TEXT, font=ctk.CTkFont(size=18, weight="bold"))
+        val.pack(anchor="w")
+        ctk.CTkLabel(box, text=label, text_color="#6b7280", font=ctk.CTkFont(size=11)).pack(anchor="w")
+        return val
 
     def _build_settings(self):
         for w in self.settings.winfo_children():
@@ -140,40 +198,53 @@ class App(ctk.CTk):
         t = self.out_type.get()
         row = ctk.CTkFrame(self.settings, fg_color="transparent")
         row.pack(expand=True)
+        mk = lambda **k: dict(fg_color=FIELD, button_color=ACCENT, button_hover_color=ACCENT_HOVER, **k)
         if t == "Video":
-            ctk.CTkLabel(row, text="Resolution", text_color="#8b93a7").grid(row=0, column=0, padx=(0, 8), pady=14)
+            ctk.CTkLabel(row, text="Resolution", text_color=MUTED).grid(row=0, column=0, padx=(0, 8), pady=14)
             ctk.CTkOptionMenu(row, values=list(RES), variable=self._vid_res, width=110,
-                              fg_color="#0f1115", button_color=ACCENT, button_hover_color=ACCENT_HOVER
-                              ).grid(row=0, column=1, padx=(0, 24))
-            ctk.CTkLabel(row, text="Frame rate", text_color="#8b93a7").grid(row=0, column=2, padx=(0, 8))
+                              **mk()).grid(row=0, column=1, padx=(0, 26))
+            ctk.CTkLabel(row, text="Frame rate", text_color=MUTED).grid(row=0, column=2, padx=(0, 8))
             ctk.CTkOptionMenu(row, values=["2", "4"], variable=self._vid_fps, width=80,
-                              fg_color="#0f1115", button_color=ACCENT, button_hover_color=ACCENT_HOVER
-                              ).grid(row=0, column=3)
+                              **mk()).grid(row=0, column=3)
         elif t == "Audio":
-            ctk.CTkLabel(row, text="Format", text_color="#8b93a7").grid(row=0, column=0, padx=(0, 10), pady=14)
+            ctk.CTkLabel(row, text="Format", text_color=MUTED).grid(row=0, column=0, padx=(0, 10), pady=14)
             ctk.CTkSegmentedButton(row, values=["m4a", "mp3"], variable=self._aud_fmt,
                                    selected_color=ACCENT, selected_hover_color=ACCENT_HOVER,
-                                   unselected_color="#0f1115").grid(row=0, column=1)
+                                   unselected_color=FIELD).grid(row=0, column=1)
         else:
             ctk.CTkLabel(row, text="No extra settings for this output.", text_color="#6b7280").pack(pady=20)
 
     def _on_type(self, _=None):
         self._build_settings()
 
-    def _chip(self, parent, image, label_text, value):
-        f = ctk.CTkFrame(parent, fg_color="transparent")
-        f.pack(side="left", padx=16)
-        ctk.CTkLabel(f, text="", image=image).pack(side="left", padx=(0, 9))
-        box = ctk.CTkFrame(f, fg_color="transparent")
-        box.pack(side="left")
-        val = ctk.CTkLabel(box, text=value, text_color="#d7dce5", font=ctk.CTkFont(size=15, weight="bold"))
-        val.pack(anchor="w")
-        ctk.CTkLabel(box, text=label_text, text_color="#6b7280", font=ctk.CTkFont(size=10)).pack(anchor="w")
-        return val
+    # ── paste / clipboard ─────────────────────────────────────────────────────
+    def _enable_paste(self, entry):
+        def paste(_=None):
+            try:
+                entry.insert("insert", self.clipboard_get())
+            except Exception:
+                pass
+            return "break"
+        menu = tkinter.Menu(self, tearoff=0, bg=CARD, fg=TEXT, activebackground=ACCENT, activeforeground="#06231f")
+        menu.add_command(label="Paste", command=paste)
+        menu.add_command(label="Copy", command=lambda: entry.event_generate("<<Copy>>"))
+        menu.add_command(label="Cut", command=lambda: entry.event_generate("<<Cut>>"))
+        menu.add_separator()
+        menu.add_command(label="Select all", command=lambda: entry.select_range(0, "end"))
+        menu.add_command(label="Clear", command=lambda: entry.delete(0, "end"))
+        for seq in ("<Control-v>", "<Control-V>", "<Button-2>"):
+            entry.bind(seq, paste)
+        entry.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
 
     # ── worker plumbing ───────────────────────────────────────────────────────
     def _say(self, msg):
         self._q.put(("log", msg))
+        try:
+            os.makedirs(OUT_DIR, exist_ok=True)
+            with open(LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(f"{datetime.datetime.now():%H:%M:%S}  {msg}\n")
+        except Exception:
+            pass
 
     def _prog(self, frac, status=None):
         self._q.put(("prog", (max(0.0, min(1.0, frac)), status)))
@@ -191,31 +262,47 @@ class App(ctk.CTk):
                     frac, status = payload
                     self.bar.set(frac)
                     if status:
-                        self.status.configure(text=status)
+                        self.status_text(status)
                 elif kind == "info":
                     wb, pdf, aud = payload
                     self.stat_wb.configure(text=str(wb))
                     self.stat_pdf.configure(text=str(pdf))
                     self.stat_aud.configure(text="yes" if aud else "no")
+                elif kind == "dots":
+                    ff, pk = payload
+                    self.dot_ff.configure(text_color=OK_DOT if ff else BAD_DOT)
+                    self.dot_pk.configure(text_color=OK_DOT if pk else BAD_DOT)
                 elif kind == "done":
+                    failed = payload == "failed"
                     self._set_busy(False)
-                    if payload:
-                        self.status.configure(text=payload)
+                    if failed and self._last_job and self._retries < MAX_RETRIES:
+                        self.retry_btn.grid(row=0, column=1, padx=(10, 0))
+                    else:
+                        self.retry_btn.grid_forget()
+                        if not failed:
+                            self._retries = 0
         except queue.Empty:
             pass
         self.after(80, self._drain)
 
+    def status_text(self, t):
+        self.out_lbl.configure(text=t if t.startswith("Output") else f"Output → {os.path.abspath(OUT_DIR)}    ·    {t}")
+
     def _set_busy(self, busy):
         self.busy = busy
         self.analyze_btn.configure(state="disabled" if busy else "normal")
+        self.fix_btn.configure(state="disabled" if busy else "normal")
         ready = not busy and self.zf is not None
         self.extract_btn.configure(state="normal" if ready else "disabled",
                                    fg_color=ACCENT if ready else "#22302e")
 
-    def _run(self, fn):
+    def _run(self, fn, remember=False):
         if self.busy:
             return
+        if remember:
+            self._last_job = fn
         self._set_busy(True)
+        self.retry_btn.grid_forget()
         threading.Thread(target=self._guard(fn), daemon=True).start()
 
     def _guard(self, fn):
@@ -224,20 +311,58 @@ class App(ctk.CTk):
                 fn()
             except Exception as e:
                 self._say(f"[!] error: {e}")
-                self._say(traceback.format_exc().splitlines()[-1])
+                self._say("    " + traceback.format_exc().splitlines()[-1])
                 self._q.put(("done", "failed"))
             else:
                 self._q.put(("done", None))
         return inner
 
+    # ── prerequisites ─────────────────────────────────────────────────────────
+    def _check(self):
+        ff = audio_mod.ffmpeg_available()
+        try:
+            import customtkinter, PIL, fitz, img2pdf, requests  # noqa: F401
+            pk = True
+        except Exception:
+            pk = False
+        return ff, pk
+
+    def refresh_prereqs(self):
+        ff, pk = self._check()
+        self._q.put(("dots", (ff, pk)))
+        return ff, pk
+
+    def fix_prereqs(self):
+        self._run(self._fix_job)
+
+    def _fix_job(self):
+        ff, pk = self._check()
+        if pk and ff:
+            self._say("[+] all prerequisites are already installed.")
+        if not pk:
+            self._say("[*] installing Python packages …")
+            for req in ("requirements.txt", "requirements-gui.txt"):
+                if os.path.exists(req):
+                    subprocess.run([sys.executable, "-m", "pip", "install", "-r", req])
+        if not ff:
+            if os.name == "nt" and shutil.which("winget"):
+                self._say("[*] installing ffmpeg via winget … (a window may ask to confirm)")
+                subprocess.run(["winget", "install", "-e", "--id", "Gyan.FFmpeg",
+                                "--accept-package-agreements", "--accept-source-agreements"])
+                self._say("[i] if ffmpeg still shows red, close and reopen this app so PATH refreshes.")
+            else:
+                self._say("[!] please install ffmpeg (Windows: winget install ffmpeg · macOS: brew install ffmpeg · Linux: apt install ffmpeg).")
+        self.refresh_prereqs()
+
     # ── actions ───────────────────────────────────────────────────────────────
     def analyze(self):
-        url = self.url_entry.get().strip()
-        rec = parse_recording_url(url)
+        rec = parse_recording_url(self.url_entry.get().strip())
         if not is_valid_recording(rec):
             self._say("[!] not a valid Adobe Connect / Vadana recording URL.")
             return
         self.rec = rec
+        self._last_job = None
+        self._retries = 0
         self._run(self._analyze_job)
 
     def _analyze_job(self):
@@ -260,7 +385,13 @@ class App(ctk.CTk):
     def extract(self):
         if self.zf is None:
             return
-        self._run(self._extract_job)
+        self._run(self._extract_job, remember=True)
+
+    def retry(self):
+        if self._last_job and not self.busy:
+            self._retries += 1
+            self._say(f"[*] retry {self._retries}/{MAX_RETRIES} …")
+            self._run(self._last_job, remember=True)
 
     def _extract_job(self):
         os.makedirs(OUT_DIR, exist_ok=True)
@@ -277,7 +408,7 @@ class App(ctk.CTk):
             self._say(f"[+] -> {out}" if res else "[!] no whiteboard in this recording.")
         elif t == "Video":
             if not audio_mod.ffmpeg_available():
-                self._say("[!] ffmpeg not found on PATH."); return
+                self._say("[!] ffmpeg not found — use ‘Check & install’ above."); return
             w, h = RES[self._vid_res.get()]
             out = os.path.join(OUT_DIR, f"{rid}.mp4")
             self._say(f"[*] building {self._vid_res.get()} @ {self._vid_fps.get()}fps … (a few minutes)")
@@ -289,14 +420,14 @@ class App(ctk.CTk):
                       else "[!] no whiteboard/screen-share/slides — try Audio for the lecture audio.")
         elif t == "Audio":
             if not audio_mod.ffmpeg_available():
-                self._say("[!] ffmpeg not found on PATH."); return
+                self._say("[!] ffmpeg not found — use ‘Check & install’ above."); return
             self._prog(0.3, "extracting audio…")
             m4a = os.path.join(OUT_DIR, f"{rid}.m4a")
             if not audio_mod.extract_audio(self.zf, work, m4a):
                 self._say("[!] no audio in this recording."); return
             if self._aud_fmt.get() == "mp3":
                 mp3 = os.path.join(OUT_DIR, f"{rid}.mp3")
-                subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", m4a,
+                subprocess.run([shutil.which("ffmpeg") or "ffmpeg", "-y", "-loglevel", "error", "-i", m4a,
                                 "-c:a", "libmp3lame", "-q:a", "3", mp3], check=True)
                 os.remove(m4a)
                 self._say(f"[+] -> {mp3}")
@@ -304,7 +435,37 @@ class App(ctk.CTk):
                 self._say(f"[+] -> {m4a}")
         self._prog(1.0, "done")
 
-    # ── misc ──────────────────────────────────────────────────────────────────
+    def _about(self):
+        win = ctk.CTkToplevel(self)
+        win.title("About")
+        win.geometry("470x470")
+        win.configure(fg_color=BG)
+        win.resizable(False, False)
+        win.after(120, lambda: (win.transient(self), win.lift(), win.grab_set()))
+        ctk.CTkLabel(win, text="", image=ctk.CTkImage(icons.icon("info", 40, icons.ACCENT), size=(40, 40))
+                     ).pack(pady=(26, 4))
+        ctk.CTkLabel(win, text="Vadana Extractor", font=ctk.CTkFont(size=22, weight="bold")).pack()
+        ctk.CTkLabel(win, text=f"version {VERSION}", text_color=MUTED, font=ctk.CTkFont(size=12)).pack(pady=(0, 12))
+        ctk.CTkLabel(win, text="Recover study material from Adobe Connect (Vadana)\n"
+                     "class recordings you're authorised to watch.",
+                     text_color=TEXT, justify="center").pack(padx=24)
+        body = ("Slides PDF — the original shared PDFs\n"
+                "Whiteboard PDF — the professor's board\n"
+                "Video — board / slides synced with the audio\n"
+                "Audio — the lecture as m4a or mp3\n\n"
+                "Needs Python 3.11–3.13 and ffmpeg on PATH.\n"
+                "Everything is saved to the out/ folder.")
+        box = ctk.CTkFrame(win, fg_color=CARD, corner_radius=12)
+        box.pack(fill="x", padx=26, pady=16)
+        ctk.CTkLabel(box, text=body, text_color="#9aa4b2", justify="left",
+                     font=ctk.CTkFont(size=12)).pack(padx=18, pady=14, anchor="w")
+        import webbrowser
+        ctk.CTkButton(win, text="GitHub  ·  phoseinq/vadana-extractor", height=34,
+                      fg_color=CARD, hover_color="#222632", font=ctk.CTkFont(size=12),
+                      command=lambda: webbrowser.open("https://github.com/phoseinq/vadana-extractor")).pack()
+        ctk.CTkButton(win, text="Close", width=120, height=34, command=win.destroy,
+                      fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color="#06231f").pack(pady=14)
+
     def _open_out(self):
         os.makedirs(OUT_DIR, exist_ok=True)
         path = os.path.abspath(OUT_DIR)
