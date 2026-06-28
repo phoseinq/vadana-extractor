@@ -94,7 +94,9 @@ pip install -r requirements-gui.txt
 python gui/vadana_gui.py
 ```
 
-Paste the link, hit **Analyze**, and it shows what the recording holds; then pick **Slides PDF / Whiteboard PDF / Video / Audio**, choose the video **resolution** (1080p / 1440p / 4K) and **frame rate** or the audio **format** (m4a / mp3), and **Extract**. Dark theme, line icons, live progress and log.
+Paste the link (there's a **Paste** button, so it works on any keyboard layout), hit **Analyze**, and it shows what the recording holds — whiteboard pages, slides, audio. Then pick **Slides PDF / Whiteboard PDF / Video / Audio**, choose the video **quality** (720p / 1080p / 1440p / 4K) and **frame rate**, or the audio **format** (m4a / mp3), and **Extract**.
+
+Dark theme with line icons, a **prerequisites** check that can install what's missing (ffmpeg + packages) in one click, **retry on error**, live progress, an on-screen and file log (`out/vadana.log`), and an **About** dialog. Everything is saved to `out/`.
 
 ### Bot setup
 
