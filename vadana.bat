@@ -1,12 +1,14 @@
 @echo off
-REM Vadana Extractor — one-click interactive launcher for Windows.
+REM Vadana Extractor - one-click interactive launcher for Windows.
 REM Double-click this file, or run  vadana.bat  from a terminal.
 setlocal
 cd /d "%~dp0"
-where python >nul 2>nul && (
-    python "%~dp0cli\vadana.py" %*
-) || (
-    py "%~dp0cli\vadana.py" %*
+set "PYEXE="
+for %%V in (3.13 3.12 3.11) do (
+    if not defined PYEXE ( py -%%V -c "" >nul 2>nul && set "PYEXE=py -%%V" )
 )
+if not defined PYEXE ( where py >nul 2>nul && set "PYEXE=py" )
+if not defined PYEXE ( set "PYEXE=python" )
+%PYEXE% "%~dp0cli\vadana.py" %*
 echo.
 pause
