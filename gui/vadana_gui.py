@@ -28,7 +28,7 @@ from vadana.connect import parse_recording_url, ConnectClient, is_valid_recordin
 from vadana import whiteboard as wb_mod, audio as audio_mod, video as video_mod
 from vadana.slides import download_slides
 
-VERSION = "3.4.6"
+VERSION = "3.4.7"
 OUT_DIR = "out"
 LOG_FILE = os.path.join(OUT_DIR, "vadana.log")
 MAX_RETRIES = 3
@@ -36,7 +36,7 @@ ACCENT, ACCENT_HOVER = "#2dd4bf", "#14b8a6"
 CARD, BG, FIELD = "#171a21", "#0f1115", "#0b0d11"
 MUTED, TEXT = "#8b93a7", "#d7dce5"
 OK_DOT, BAD_DOT = "#34d399", "#f87171"
-RES = {"1080p": (1920, 1080), "1440p": (2560, 1440), "4K": (3840, 2160)}
+RES = {"720p": (1280, 720), "1080p": (1920, 1080), "1440p": (2560, 1440), "4K": (3840, 2160)}
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
@@ -72,6 +72,7 @@ class App(ctk.CTk):
         self.ic_search = ctk.CTkImage(icons.icon("search", 18, DARK), size=(18, 18))
         self.ic_dl = ctk.CTkImage(icons.icon("download", 20, DARK), size=(20, 20))
         self.ic_info = ctk.CTkImage(icons.icon("info", 20), size=(20, 20))
+        self.ic_paste = ctk.CTkImage(icons.icon("paste", 18), size=(18, 18))
 
         head = ctk.CTkFrame(self, fg_color="transparent")
         head.pack(fill="x", padx=22, pady=(18, 12))
@@ -106,11 +107,14 @@ class App(ctk.CTk):
         self.url_entry.grid(row=0, column=0, sticky="ew", padx=(14, 8), pady=14)
         self.url_entry.bind("<Return>", lambda e: self.analyze())
         self._enable_paste(self.url_entry)
+        ctk.CTkButton(url, text="Paste", image=self.ic_paste, compound="left", width=92, height=44,
+                      command=self._paste_url, fg_color=FIELD, hover_color="#222632",
+                      font=ctk.CTkFont(size=13)).grid(row=0, column=1, padx=(0, 8), pady=14)
         self.analyze_btn = ctk.CTkButton(url, text="Analyze", image=self.ic_search, compound="left",
                                          width=130, height=44, command=self.analyze,
                                          fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color="#06231f",
                                          font=ctk.CTkFont(size=14, weight="bold"))
-        self.analyze_btn.grid(row=0, column=1, padx=(0, 14), pady=14)
+        self.analyze_btn.grid(row=0, column=2, padx=(0, 14), pady=14)
 
         # contents card
         card = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
@@ -200,7 +204,7 @@ class App(ctk.CTk):
         row.pack(expand=True)
         mk = lambda **k: dict(fg_color=FIELD, button_color=ACCENT, button_hover_color=ACCENT_HOVER, **k)
         if t == "Video":
-            ctk.CTkLabel(row, text="Resolution", text_color=MUTED).grid(row=0, column=0, padx=(0, 8), pady=14)
+            ctk.CTkLabel(row, text="Quality", text_color=MUTED).grid(row=0, column=0, padx=(0, 8), pady=14)
             ctk.CTkOptionMenu(row, values=list(RES), variable=self._vid_res, width=110,
                               **mk()).grid(row=0, column=1, padx=(0, 26))
             ctk.CTkLabel(row, text="Frame rate", text_color=MUTED).grid(row=0, column=2, padx=(0, 8))
@@ -235,6 +239,17 @@ class App(ctk.CTk):
         for seq in ("<Control-v>", "<Control-V>", "<Button-2>"):
             entry.bind(seq, paste)
         entry.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
+
+    def _paste_url(self):
+        """Layout-independent paste — works no matter the keyboard (Persian etc.)."""
+        try:
+            txt = self.clipboard_get().strip()
+        except Exception:
+            txt = ""
+        if txt:
+            self.url_entry.delete(0, "end")
+            self.url_entry.insert(0, txt)
+            self.url_entry.focus_set()
 
     # ── worker plumbing ───────────────────────────────────────────────────────
     def _say(self, msg):

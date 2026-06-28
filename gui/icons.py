@@ -56,6 +56,13 @@ def icon(name: str, size: int = 20, color=MUTED) -> Image.Image:
         d.line([cx + s * 0.13, s * 0.45, cx, s * 0.62], fill=color, width=w)
         d.line([m, s - m, s - m, s - m], fill=color, width=w)
 
+    elif name == "paste":                               # clipboard
+        d.rounded_rectangle([m, m * 1.25, s - m, s - m], radius=s * 0.08, outline=color, width=w)
+        d.rounded_rectangle([s * 0.35, m * 0.55, s * 0.65, m * 1.7], radius=s * 0.05, outline=color, width=w)
+        for i in range(2):
+            y = s * 0.55 + i * s * 0.17
+            d.line([m + s * 0.13, y, s - m - s * 0.13, y], fill=color, width=w)
+
     elif name == "info":                                # "i" in a circle
         d.ellipse([m, m, s - m, s - m], outline=color, width=w)
         cx = s * 0.5
