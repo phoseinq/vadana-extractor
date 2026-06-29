@@ -29,7 +29,7 @@ from vadana.connect import parse_recording_url, ConnectClient, is_valid_recordin
 from vadana import whiteboard as wb_mod, audio as audio_mod, video as video_mod
 from vadana.slides import download_slides
 
-VERSION = "3.4.9"
+VERSION = "3.4.10"
 OUT_DIR = "out"
 LOG_FILE = os.path.join(OUT_DIR, "vadana.log")
 MAX_RETRIES = 3
@@ -505,10 +505,18 @@ class App(ctk.CTk):
 
             res = video_mod.make_full_video(self.zf, work, out, 2, float(self._vid_fps.get()),
                                             progress=vprog, pdf_paths=self.pdfs or None, out_w=w, out_h=h)
-            if res:
+            dur = audio_mod.duration_seconds(out) if res and os.path.exists(out) else 0
+            if res and dur >= 1:
                 produced = [out]
                 mb = os.path.getsize(out) / 1e6
-                self._say(f"[+] done in {time.time() - t0:.0f}s  ·  {mb:.1f} MB  ->  {out}")
+                self._say(f"[+] done in {time.time() - t0:.0f}s  ·  {mb:.1f} MB  ·  {dur / 60:.1f} min  ->  {out}")
+            elif res:
+                try:
+                    os.remove(out)
+                except OSError:
+                    pass
+                self._say("[!] this class has no audio or whiteboard — only slides, so the video would be "
+                          "empty. Use ‘Slides PDF’ to get the actual PDF instead.")
             else:
                 self._say("[!] no whiteboard/screen-share/slides — try Audio for the lecture audio.")
         elif t == "Audio":
