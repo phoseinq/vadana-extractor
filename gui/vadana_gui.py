@@ -29,7 +29,7 @@ from vadana.connect import parse_recording_url, ConnectClient, is_valid_recordin
 from vadana import whiteboard as wb_mod, audio as audio_mod, video as video_mod
 from vadana.slides import download_slides
 
-VERSION = "3.4.8"
+VERSION = "3.4.9"
 OUT_DIR = "out"
 LOG_FILE = os.path.join(OUT_DIR, "vadana.log")
 MAX_RETRIES = 3
@@ -51,8 +51,8 @@ class App(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Vadana Extractor")
-        self.geometry("900x780")
-        self.minsize(820, 720)
+        self.geometry("900x860")
+        self.minsize(820, 760)
         self.configure(fg_color=BG)
 
         self._q: queue.Queue = queue.Queue()
@@ -61,6 +61,8 @@ class App(ctk.CTk):
         self.busy = False
         self._last_job = None
         self._retries = 0
+        self.duration_sec = 0
+        self.est_lbl = None
 
         self._build()
         self.after(80, self._drain)
@@ -168,6 +170,14 @@ class App(ctk.CTk):
         self.bar.set(0)
         self.bar.pack(fill="x", padx=22, pady=(0, 8))
 
+        # produced files
+        self.results = ctk.CTkScrollableFrame(self, fg_color=FIELD, corner_radius=12, height=108,
+                                              label_text="  OUTPUT FILES", label_fg_color=CARD,
+                                              label_text_color="#5b6478",
+                                              label_font=ctk.CTkFont(size=10, weight="bold"))
+        self.results.pack(fill="x", padx=22, pady=(0, 8))
+        self._results_placeholder()
+
         self.log = ctk.CTkTextbox(self, fg_color=FIELD, text_color="#9aa4b2", corner_radius=12,
                                   font=ctk.CTkFont(family="Consolas", size=12))
         self.log.pack(fill="both", expand=True, padx=22, pady=(0, 8))
@@ -205,16 +215,21 @@ class App(ctk.CTk):
         for w in self.settings.winfo_children():
             w.destroy()
         t = self.out_type.get()
+        self.est_lbl = None
         row = ctk.CTkFrame(self.settings, fg_color="transparent")
         row.pack(expand=True)
         mk = lambda **k: dict(fg_color=FIELD, button_color=ACCENT, button_hover_color=ACCENT_HOVER, **k)
         if t == "Video":
             ctk.CTkLabel(row, text="Quality", text_color=MUTED).grid(row=0, column=0, padx=(0, 8), pady=14)
             ctk.CTkOptionMenu(row, values=list(RES), variable=self._vid_res, width=110,
-                              **mk()).grid(row=0, column=1, padx=(0, 26))
+                              command=self._update_estimate, **mk()).grid(row=0, column=1, padx=(0, 24))
             ctk.CTkLabel(row, text="Frame rate", text_color=MUTED).grid(row=0, column=2, padx=(0, 8))
-            ctk.CTkOptionMenu(row, values=["2", "4", "8", "15", "30"], variable=self._vid_fps, width=80,
-                              **mk()).grid(row=0, column=3)
+            ctk.CTkOptionMenu(row, values=["2", "4", "8", "15", "30"], variable=self._vid_fps, width=78,
+                              command=self._update_estimate, **mk()).grid(row=0, column=3, padx=(0, 24))
+            self.est_lbl = ctk.CTkLabel(row, text="≈ — MB", text_color=ACCENT,
+                                        font=ctk.CTkFont(size=15, weight="bold"))
+            self.est_lbl.grid(row=0, column=4)
+            self._update_estimate()
         elif t == "Audio":
             ctk.CTkLabel(row, text="Format", text_color=MUTED).grid(row=0, column=0, padx=(0, 10), pady=14)
             ctk.CTkSegmentedButton(row, values=["m4a", "mp3"], variable=self._aud_fmt,
@@ -226,13 +241,32 @@ class App(ctk.CTk):
     def _on_type(self, _=None):
         self._build_settings()
 
+    def _update_estimate(self, _=None):
+        """Rough output-size estimate that reacts to quality + frame rate. Calibrated
+        on real builds (1440p@4fps ≈ the audio bitrate + ~1.2 kbps per megapixel per
+        fps for the mostly-static board/slides). Just a ballpark — marked with ≈."""
+        if self.est_lbl is None:
+            return
+        if self.duration_sec < 1:
+            self.est_lbl.configure(text="≈ — MB")
+            return
+        w, h = RES[self._vid_res.get()]
+        fps = float(self._vid_fps.get())
+        kbps = 96 + 1.2 * (w * h / 1_000_000) * fps      # audio + video (static content)
+        self.est_lbl.configure(text=f"≈ {kbps * self.duration_sec / 8000:.0f} MB")
+
     # ── paste / clipboard ─────────────────────────────────────────────────────
     def _enable_paste(self, entry):
         def paste(_=None):
             try:
-                entry.insert("insert", self.clipboard_get())
+                txt = self.clipboard_get()
+            except Exception:
+                return "break"
+            try:
+                entry.delete("sel.first", "sel.last")   # replace the selection (e.g. after Ctrl+A)
             except Exception:
                 pass
+            entry.insert("insert", txt)
             return "break"
         menu = tkinter.Menu(self, tearoff=0, bg=CARD, fg=TEXT, activebackground=ACCENT, activeforeground="#06231f")
         menu.add_command(label="Paste", command=paste)
@@ -242,10 +276,15 @@ class App(ctk.CTk):
         menu.add_command(label="Select all", command=lambda: entry.select_range(0, "end"))
         menu.add_command(label="Clear", command=lambda: entry.delete(0, "end"))
         def on_ctrl(e):
-            # match V by its physical keycode (86 on Windows, 55 on X11) so Ctrl+V
-            # works on any keyboard layout — a Persian layout sends a different keysym
-            if e.keycode in (86, 55) or (getattr(e, "keysym", "") or "").lower() == "v":
+            # match by physical keycode (V=86, A=65 on Windows; 55/38 on X11) so Ctrl+V
+            # and Ctrl+A work on any keyboard layout — a Persian layout sends a different keysym
+            ks = (getattr(e, "keysym", "") or "").lower()
+            if e.keycode in (86, 55) or ks == "v":
                 return paste()
+            if e.keycode in (65, 38) or ks == "a":
+                entry.select_range(0, "end")
+                entry.icursor("end")
+                return "break"
         entry.bind("<Control-KeyPress>", on_ctrl)
         entry.bind("<Button-2>", paste)
         entry.bind("<Button-3>", lambda e: menu.tk_popup(e.x_root, e.y_root))
@@ -293,10 +332,13 @@ class App(ctk.CTk):
                     self.stat_wb.configure(text=str(wb))
                     self.stat_pdf.configure(text=str(pdf))
                     self.stat_aud.configure(text="yes" if aud else "no")
+                    self._update_estimate()
                 elif kind == "dots":
                     ff, pk = payload
                     self.dot_ff.configure(text_color=OK_DOT if ff else BAD_DOT)
                     self.dot_pk.configure(text_color=OK_DOT if pk else BAD_DOT)
+                elif kind == "results":
+                    self._show_results(payload)
                 elif kind == "done":
                     failed = payload == "failed"
                     self._set_busy(False)
@@ -401,7 +443,11 @@ class App(ctk.CTk):
         work = os.path.join(OUT_DIR, "_work", self.rec.rec_id)
         self.pdfs = download_slides(self.client, self.rec.rec_id, os.path.join(work, "pdfs"),
                                     self.zf, exts={".pdf"}) or []
-        has_audio = bool(audio_mod.main_audio_segments(self.zf))
+        segs = audio_mod.main_audio_segments(self.zf)
+        has_audio = bool(segs)
+        self.duration_sec = video_mod._meta_seconds(self.zf, "mainstream.xml") or 0
+        if self.duration_sec < 1 and segs:
+            self.duration_sec = audio_mod._xml_total_seconds(self.zf, segs)
         self._q.put(("info", (len(wb.pages), len(self.pdfs), has_audio)))
         self._prog(1.0, "ready")
         self._say(f"[+] whiteboard pages: {len(wb.pages)}   slides: {len(self.pdfs)}   "
@@ -424,12 +470,16 @@ class App(ctk.CTk):
         rid = self.rec.rec_id
         t = self.out_type.get()
         self.bar.set(0)
+        produced = []
         if t == "Slides PDF":
             saved = download_slides(self.client, rid, OUT_DIR, self.zf, exts={".pdf"})
+            produced = saved or []
             self._say(f"[+] {len(saved)} PDF(s) -> {OUT_DIR}/" if saved else "[!] no shared PDFs.")
         elif t == "Whiteboard PDF":
             out = os.path.join(OUT_DIR, f"{rid}_whiteboard.pdf")
             res = wb_mod.make_pdf(self.zf, out, 2, None, self.pdfs or None)
+            if res:
+                produced = [out]
             self._say(f"[+] -> {out}" if res else "[!] no whiteboard in this recording.")
         elif t == "Video":
             if not audio_mod.ffmpeg_available():
@@ -456,6 +506,7 @@ class App(ctk.CTk):
             res = video_mod.make_full_video(self.zf, work, out, 2, float(self._vid_fps.get()),
                                             progress=vprog, pdf_paths=self.pdfs or None, out_w=w, out_h=h)
             if res:
+                produced = [out]
                 mb = os.path.getsize(out) / 1e6
                 self._say(f"[+] done in {time.time() - t0:.0f}s  ·  {mb:.1f} MB  ->  {out}")
             else:
@@ -472,9 +523,13 @@ class App(ctk.CTk):
                 subprocess.run([shutil.which("ffmpeg") or "ffmpeg", "-y", "-loglevel", "error", "-i", m4a,
                                 "-c:a", "libmp3lame", "-q:a", "3", mp3], check=True)
                 os.remove(m4a)
+                produced = [mp3]
                 self._say(f"[+] -> {mp3}")
             else:
+                produced = [m4a]
                 self._say(f"[+] -> {m4a}")
+        if produced:
+            self._q.put(("results", produced))
         self._prog(1.0, "done")
 
     def _about(self):
@@ -507,6 +562,47 @@ class App(ctk.CTk):
                       command=lambda: webbrowser.open("https://github.com/phoseinq/vadana-extractor")).pack()
         ctk.CTkButton(win, text="Close", width=120, height=34, command=win.destroy,
                       fg_color=ACCENT, hover_color=ACCENT_HOVER, text_color="#06231f").pack(pady=14)
+
+    def _results_placeholder(self):
+        for w in self.results.winfo_children():
+            w.destroy()
+        ctk.CTkLabel(self.results, text="Extracted files will appear here — with a button to reveal them.",
+                     text_color="#5b6478", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=8, pady=10)
+
+    def _show_results(self, paths):
+        for w in self.results.winfo_children():
+            w.destroy()
+        paths = [p for p in (paths or []) if p and os.path.exists(p)]
+        if not paths:
+            self._results_placeholder()
+            return
+        for p in paths:
+            ap = os.path.abspath(p)
+            rowf = ctk.CTkFrame(self.results, fg_color=CARD, corner_radius=8)
+            rowf.pack(fill="x", padx=4, pady=3)
+            ctk.CTkButton(rowf, text="Show in folder", image=self.ic_folder, compound="left",
+                          width=140, height=30, command=lambda x=ap: self._reveal(x),
+                          fg_color=FIELD, hover_color="#222632",
+                          font=ctk.CTkFont(size=11)).pack(side="right", padx=8, pady=8)
+            box = ctk.CTkFrame(rowf, fg_color="transparent")
+            box.pack(side="left", fill="x", expand=True, padx=12, pady=6)
+            size = f"  ·  {os.path.getsize(ap) / 1e6:.1f} MB" if os.path.getsize(ap) > 1e5 else ""
+            ctk.CTkLabel(box, text=os.path.basename(ap) + size, text_color=TEXT, anchor="w",
+                         font=ctk.CTkFont(size=13, weight="bold")).pack(anchor="w")
+            ctk.CTkLabel(box, text=ap, text_color="#5b6478", anchor="w",
+                         font=ctk.CTkFont(size=10)).pack(anchor="w")
+
+    def _reveal(self, path):
+        path = os.path.abspath(path)
+        try:
+            if os.name == "nt":
+                subprocess.run(["explorer", "/select," + path])     # Explorer with the file highlighted
+            elif sys.platform == "darwin":
+                subprocess.run(["open", "-R", path])
+            else:
+                subprocess.run(["xdg-open", os.path.dirname(path)])
+        except Exception:
+            self._say(f"[i] file: {path}")
 
     def _open_out(self):
         os.makedirs(OUT_DIR, exist_ok=True)
