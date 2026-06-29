@@ -20,6 +20,8 @@
 
 <div align="center">
 
+<img src="assets/gui.png" alt="Vadana Extractor — desktop GUI" width="720">
+
 <img src="assets/bot.png" alt="ربات آرشیو وادانا" height="240"> <img src="assets/cli.png" alt="vadana CLI" height="240">
 
 </div>
@@ -94,9 +96,9 @@ pip install -r requirements-gui.txt
 python gui/vadana_gui.py
 ```
 
-Paste the link (there's a **Paste** button, so it works on any keyboard layout), hit **Analyze**, and it shows what the recording holds — whiteboard pages, slides, audio. Then pick **Slides PDF / Whiteboard PDF / Video / Audio**, choose the video **quality** (720p / 1080p / 1440p / 4K) and **frame rate**, or the audio **format** (m4a / mp3), and **Extract**.
+Paste the link (there's a **Paste** button, so it works on any keyboard layout), hit **Analyze**, and it shows what the recording holds — whiteboard pages, slides, audio. Then pick **Slides PDF / Whiteboard PDF / Video / Audio**, choose the video **quality** (720p / 1080p / 1440p / 4K) and **frame rate**, or the audio **format** (m4a / mp3), and **Extract**. As you tweak the quality / frame rate it shows a live **size estimate**.
 
-Dark theme with line icons, a **prerequisites** check that can install what's missing (ffmpeg + packages) in one click, **retry on error**, live progress, an on-screen and file log (`out/vadana.log`), and an **About** dialog. Everything is saved to `out/`.
+Dark theme with line icons, a **prerequisites** check that one-click installs what's missing (ffmpeg + packages), a **Cancel** button, **retry on error**, an **output-files** box (name, size, path, and *reveal in folder*), live progress, an on-screen + file log (`out/vadana.log`), and an **About** dialog. Everything is saved to `out/`.
 
 ### Bot setup
 
@@ -239,6 +241,19 @@ python cli/make_video.py "<url>" --pages-only                  # فقط صفحه
 ```
 
 معمولاً همین لینکِ ساده کافی است. اگر ضبطی به ورود نیاز داشت، لینکِ کامل همراه با مقدارِ `session=` را کپی کن (زود منقضی می‌شود).
+
+### اپِ دسکتاپ (محیطِ گرافیکیِ دارک)
+
+پنجره را به ترمینال ترجیح می‌دهی؟ در **ویندوز** فقط روی **`vadana-gui.bat`** دوبار کلیک کن (بارِ اول وابستگیِ گرافیکی را خودش نصب می‌کند و برنامه باز می‌شود)؛ روی هر سیستمی:
+
+```bash
+pip install -r requirements-gui.txt
+python gui/vadana_gui.py
+```
+
+لینک را بزن (دکمهٔ **Paste** هم هست، پس با کیبوردِ فارسی هم کار می‌کند)، **Analyze** را بزن تا محتوای ضبط را نشان دهد (وایت‌برد، اسلاید، صدا). بعد یکی از **Slides PDF / Whiteboard PDF / Video / Audio** را انتخاب کن، **کیفیتِ** ویدیو (720p / 1080p / 1440p / 4K) و **فریم‌ریت**، یا **فرمتِ** صدا (m4a / mp3) را بچین و **Extract** بزن. با تغییرِ کیفیت و فریم‌ریت، **تخمینِ حجمِ نهایی** زنده نشان داده می‌شود.
+
+تمِ دارک با آیکونِ خطی، **بررسیِ پیش‌نیازها** با نصبِ یک‌کلیکیِ موارد گم‌شده (ffmpeg + پکیج‌ها)، دکمهٔ **لغو**، **تلاشِ مجدد** هنگام خطا، **باکسِ فایل‌های خروجی** (نام، حجم، مسیر و «نمایش در پوشه»)، پیشرفتِ زنده، لاگِ روی صفحه و فایل (`out/vadana.log`)، و پنجرهٔ **About**. همه‌چیز در پوشهٔ `out/` ذخیره می‌شود.
 
 ### راه‌اندازیِ ربات
 

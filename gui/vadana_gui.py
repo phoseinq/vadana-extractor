@@ -29,7 +29,7 @@ from vadana.connect import parse_recording_url, ConnectClient, is_valid_recordin
 from vadana import whiteboard as wb_mod, audio as audio_mod, video as video_mod
 from vadana.slides import download_slides
 
-VERSION = "3.4.10"
+VERSION = "3.4.11"
 OUT_DIR = "out"
 LOG_FILE = os.path.join(OUT_DIR, "vadana.log")
 MAX_RETRIES = 3
@@ -45,6 +45,10 @@ STAGE_LABEL = {"audio": "extracting & mixing the lecture audio",
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("dark-blue")
+
+
+class _CancelError(Exception):
+    """Raised from a progress callback to abort the running job."""
 
 
 class App(ctk.CTk):
@@ -63,6 +67,7 @@ class App(ctk.CTk):
         self._retries = 0
         self.duration_sec = 0
         self.est_lbl = None
+        self._cancel = threading.Event()
 
         self._build()
         self.after(80, self._drain)
@@ -80,12 +85,16 @@ class App(ctk.CTk):
         self.ic_dl = ctk.CTkImage(icons.icon("download", 20, DARK), size=(20, 20))
         self.ic_info = ctk.CTkImage(icons.icon("info", 20), size=(20, 20))
         self.ic_paste = ctk.CTkImage(icons.icon("paste", 18), size=(18, 18))
+        self.ic_logo = ctk.CTkImage(icons.icon("video", 40, icons.ACCENT), size=(40, 40))
 
         head = ctk.CTkFrame(self, fg_color="transparent")
         head.pack(fill="x", padx=22, pady=(18, 12))
         ctk.CTkButton(head, text="", image=self.ic_info, width=40, height=40, command=self._about,
                       fg_color=CARD, hover_color="#222632", corner_radius=20).pack(side="right", anchor="n")
-        ttl = ctk.CTkFrame(head, fg_color="transparent")
+        left = ctk.CTkFrame(head, fg_color="transparent")
+        left.pack(side="left", anchor="w")
+        ctk.CTkLabel(left, text="", image=self.ic_logo).pack(side="left", padx=(0, 14), anchor="n")
+        ttl = ctk.CTkFrame(left, fg_color="transparent")
         ttl.pack(side="left", anchor="w")
         ctk.CTkLabel(ttl, text="Vadana Extractor", font=ctk.CTkFont(size=26, weight="bold")).pack(anchor="w")
         ctk.CTkLabel(ttl, text="Recover slides · whiteboard · video · audio from a Vadana recording",
@@ -162,13 +171,19 @@ class App(ctk.CTk):
                                          text_color_disabled="#5b6f6a",
                                          font=ctk.CTkFont(size=16, weight="bold"), corner_radius=12)
         self.extract_btn.grid(row=0, column=0, sticky="ew")
+        self.cancel_btn = ctk.CTkButton(act, text="Cancel", width=130, height=48, command=self.cancel,
+                                        fg_color="#3a2730", hover_color="#7a3a48", text_color="#f9c0cf",
+                                        font=ctk.CTkFont(size=15, weight="bold"), corner_radius=12)
         self.retry_btn = ctk.CTkButton(act, text="Retry", width=110, height=48, command=self.retry,
                                        fg_color="#3a2730", hover_color="#5b3a48", text_color="#f9c0cf",
                                        font=ctk.CTkFont(size=14, weight="bold"), corner_radius=12)
 
+        self.prog_status = ctk.CTkLabel(self, text="ready", text_color=MUTED, anchor="w",
+                                        font=ctk.CTkFont(size=12))
+        self.prog_status.pack(fill="x", padx=24, pady=(2, 0))
         self.bar = ctk.CTkProgressBar(self, height=8, progress_color=ACCENT, fg_color=CARD)
         self.bar.set(0)
-        self.bar.pack(fill="x", padx=22, pady=(0, 8))
+        self.bar.pack(fill="x", padx=22, pady=(2, 8))
 
         # produced files
         self.results = ctk.CTkScrollableFrame(self, fg_color=FIELD, corner_radius=12, height=108,
@@ -326,7 +341,7 @@ class App(ctk.CTk):
                     frac, status = payload
                     self.bar.set(frac)
                     if status:
-                        self.status_text(status)
+                        self.prog_status.configure(text=status)
                 elif kind == "info":
                     wb, pdf, aud = payload
                     self.stat_wb.configure(text=str(wb))
@@ -362,12 +377,28 @@ class App(ctk.CTk):
         ready = not busy and self.zf is not None
         self.extract_btn.configure(state="normal" if ready else "disabled",
                                    fg_color=ACCENT if ready else "#22302e")
+        if busy:
+            self.retry_btn.grid_forget()
+            self.cancel_btn.configure(state="normal", text="Cancel")
+            self.cancel_btn.grid(row=0, column=1, padx=(10, 0))
+        else:
+            self.cancel_btn.grid_forget()
+
+    def cancel(self):
+        self._cancel.set()
+        self.cancel_btn.configure(state="disabled", text="Cancelling…")
+        self._say("[x] cancelling …")
+
+    def _ck(self):
+        if self._cancel.is_set():
+            raise _CancelError()
 
     def _run(self, fn, remember=False):
         if self.busy:
             return
         if remember:
             self._last_job = fn
+        self._cancel.clear()
         self._set_busy(True)
         self.retry_btn.grid_forget()
         threading.Thread(target=self._guard(fn), daemon=True).start()
@@ -376,6 +407,9 @@ class App(ctk.CTk):
         def inner():
             try:
                 fn()
+            except _CancelError:
+                self._say("[x] cancelled.")
+                self._q.put(("done", "cancelled"))
             except Exception as e:
                 self._say(f"[!] error: {e}")
                 self._say("    " + traceback.format_exc().splitlines()[-1])
@@ -437,8 +471,9 @@ class App(ctk.CTk):
         proxy = os.environ.get("IRAN_PROXY") or None
         self.client = ConnectClient(self.rec.host, self.rec.token, proxy=proxy)
         self._say(f"[*] downloading package {self.rec.rec_id} …")
-        self.zf = self.client.open_package(self.rec.rec_id,
-                                           lambda g, t: self._prog((g / t * 0.9) if t else 0.3, "downloading…"))
+        self.zf = self.client.open_package(
+            self.rec.rec_id,
+            lambda g, t: (self._ck(), self._prog((g / t * 0.9) if t else 0.3, "downloading…")))
         wb = wb_mod.load_from_package(self.zf)
         work = os.path.join(OUT_DIR, "_work", self.rec.rec_id)
         self.pdfs = download_slides(self.client, self.rec.rec_id, os.path.join(work, "pdfs"),
@@ -497,6 +532,7 @@ class App(ctk.CTk):
             last = [None]
 
             def vprog(s, p):
+                self._ck()
                 label = STAGE_LABEL.get(s, s)
                 if s != last[0]:
                     last[0] = s
