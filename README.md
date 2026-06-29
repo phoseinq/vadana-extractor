@@ -224,9 +224,9 @@ pytest
 - توکنِ ربات از [@BotFather](https://t.me/BotFather) (فقط حالتِ ربات)
 - روی سیستمِ شخصی/ایران پروکسی لازم نیست — فقط روی سرورِ خارج یک پروکسیِ ریورس
 
-### خط‌فرمان (ویندوز یا هر کامپیوتری)
+### خط‌فرمانِ تعاملی (ویندوز / مک / لینوکس)
 
-[پایتون ۳.۱۱ تا ۳.۱۳](https://www.python.org/downloads/) را نصب کن (گزینهٔ **Add to PATH** را بزن) و برای ویدیو هم **ffmpeg** را (`winget install ffmpeg`). بعد:
+[پایتون ۳.۱۱ تا ۳.۱۳](https://www.python.org/downloads/) را نصب کن (گزینهٔ **Add to PATH** را بزن) و برای ویدیو/صدا هم **ffmpeg** را (`winget install ffmpeg`). بعد:
 
 ```bash
 git clone https://github.com/phoseinq/vadana-extractor
@@ -234,11 +234,22 @@ cd vadana-extractor
 pip install -r requirements.txt
 ```
 
+با **یک دستور** اجرا کن — در **ویندوز** فقط روی **`vadana.bat`** دوبار کلیک کن (یا در ترمینال اجرا کن)؛ روی هر سیستمی:
+
+```bash
+python cli/vadana.py
+```
+
+کاملاً راهنمایی‌شده است: لینکِ ضبط را بزن، خودش می‌گوید ضبط چه دارد (وایت‌برد / اسلاید / صدا)، بعد از منو یکی را انتخاب کن — **اسلاید PDF**، **وایت‌برد PDF**، **ویدیوی همگام**، یا **فقط صدا (m4a یا mp3)**. حلقه می‌زند، پس بدونِ اجرای دوباره می‌توانی چند خروجی — یا چند ضبط — بگیری. همه‌چیز در `out/` ذخیره می‌شود.
+
+<details><summary>دستورهای تک‌مرحله‌ای را ترجیح می‌دهی؟</summary>
+
 ```bash
 python cli/download_slides.py "https://<connect-host>/<id>/"   # فایل‌های اشتراکی
-python cli/make_video.py "<url>"                               # ویدیوی همگام
+python cli/make_video.py "<url>"                               # ویدیوی همگام (کلاسِ بی‌تصویر ← فایلِ ‎.m4a)
 python cli/make_video.py "<url>" --pages-only                  # فقط صفحه‌های تخته (PDF)
 ```
+</details>
 
 معمولاً همین لینکِ ساده کافی است. اگر ضبطی به ورود نیاز داشت، لینکِ کامل همراه با مقدارِ `session=` را کپی کن (زود منقضی می‌شود).
 
