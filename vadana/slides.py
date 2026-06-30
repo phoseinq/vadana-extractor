@@ -9,22 +9,25 @@ from .connect import ConnectClient, read_member
 _DOWNLOAD_RE = re.compile(r"<downloadUrl><!\[CDATA\[([^\]]+)\]\]></downloadUrl>")
 
 def find_shared_files(mainstream_xml: str) -> list[tuple[str, str]]:
-    """Return unique (source_base, filename) pairs in first-seen order.
+    """Return one (source_base, filename) per distinct filename, first-seen order.
 
     A downloadUrl looks like:
       /system/download?download-url=/_a7/<cid>/source/&name=<urlencoded name>
     The real file is served at <source_base><name>?download=true
+
+    Dedup is by filename, not by the raw URL: Adobe Connect emits a fresh
+    downloadUrl (different content-id base / query) every time the same file is
+    shown in another pod or event, so keying on the URL let the same file
+    through repeatedly — which made the bot download and send it N times.
     """
     seen: set[str] = set()
     out: list[tuple[str, str]] = []
     for rel in _DOWNLOAD_RE.findall(mainstream_xml):
-        if rel in seen:
-            continue
-        seen.add(rel)
         q = parse_qs(urlparse(rel).query)
         base = q.get("download-url", [""])[0]
         name = unquote_plus(q.get("name", ["file.pdf"])[0])
-        if base.startswith("/"):
+        if base.startswith("/") and name not in seen:
+            seen.add(name)
             out.append((base, name))
     return out
 

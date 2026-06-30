@@ -29,6 +29,20 @@ def test_no_shared_files_returns_empty(fake_client, make_zip, tmp_path):
     assert download_slides(fake_client, "rec", str(tmp_path), zf=z) == []
 
 
+def test_dedup_same_file_different_urls(fake_client, make_zip, tmp_path):
+    # Adobe Connect emits a fresh downloadUrl (different content-id / query) every
+    # time a file is reshown; dedup is by filename so it isn't sent N times.
+    xml = ("<recording>"
+           "<downloadUrl><![CDATA[/system/download?download-url=/_a7/11/source/&name=Slides.pdf]]></downloadUrl>"
+           "<downloadUrl><![CDATA[/system/download?download-url=/_a7/22/source/&name=Slides.pdf]]></downloadUrl>"
+           "<downloadUrl><![CDATA[/system/download?download-url=/_a7/11/source/&name=Slides.pdf&v=2]]></downloadUrl>"
+           "</recording>")
+    z = make_zip({"mainstream.xml": xml})
+    saved = download_slides(fake_client, "rec", str(tmp_path), zf=z)
+    assert [os.path.basename(p) for p in saved] == ["Slides.pdf"]
+    assert len(fake_client.requested) == 1
+
+
 def test_rejects_html_login_page(make_client, package, tmp_path):
     client = make_client(content=b"<html>login</html>", ct="text/html")
     saved = download_slides(client, "rec", str(tmp_path), zf=package)

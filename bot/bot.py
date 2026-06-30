@@ -740,7 +740,12 @@ async def do_files(m, rec, ftype, uid):
                 await poller
             shutil.rmtree(tmp, ignore_errors=True)
 
-    items = manifest if ftype == "all" else [it for it in manifest if it["cat"] == ftype]
+    pick = manifest if ftype == "all" else [it for it in manifest if it["cat"] == ftype]
+    seen, items = set(), []          # drop dup names baked into old cached manifests
+    for it in pick:
+        if it["name"] not in seen:
+            seen.add(it["name"])
+            items.append(it)
     if not items:
         label = "همهٔ فایل‌ها" if ftype == "all" else FT_LABEL.get(ftype, "فایل")
         await status.edit_text(f"ℹ️ فایلی از نوعِ «{label}» در این جلسه پیدا نشد.\n"
